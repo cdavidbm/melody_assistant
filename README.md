@@ -6,19 +6,12 @@ Implementación computacional de los principios de composición melódica de la 
 
 ```
 Ejercicios music21 y Abjad/
-├── mainpy                    # Script principal del generador
+├── main.py                   # Script principal del generador
 ├── README.md                 # Este archivo (documentación completa)
 ├── AGENTS.md                 # Guía para agentes de IA
 ├── tarea.md                  # Especificación teórica detallada
-├── requirements.txt          # Dependencias (abjad, music21)
-├── ejemplos/                 # Archivos .ly listos para LilyPond
-│   ├── EJEMPLO_PARA_PROBAR.ly
-│   ├── EJEMPLO_CON_SILENCIOS.ly
-│   ├── EJEMPLO_CON_CLIMAX_Y_VARIACIONES.ly
-│   └── ejemplo_5_8.ly
-└── backups/                  # Versiones anteriores (por seguridad)
-    ├── mainpy.backup
-    └── mainpy.backup2
+├── showcase_final.ly         # Ejemplo de salida (F Dorian 7/8)
+└── main.py.BACKUP_PERFECTO_* # Backups automáticos con timestamp
 ```
 
 ## Características Principales
@@ -96,6 +89,24 @@ Ejercicios music21 y Abjad/
 - **Formato profesional**: Notación absoluta con header (título/compositor)
 - **Compatibilidad total**: Notación estándar LilyPond (is/es en lugar de s/f)
 - **MIDI automático**: Incluye bloque `\midi {}` para exportación
+
+### 12. Ritmo Anclado a Pulsos ⭐ NUEVO
+- **Generación beat-by-beat**: Cada pulso se trata como unidad indivisible
+- **Respeta jerarquía métrica**: Notas estructurales en pulsos fuertes, notas de paso en débiles
+- **Sin síncopas involuntarias**: Las duraciones no cruzan fronteras de pulsos
+- **Subdivisiones controladas**: Dentro de cada pulso (corchea-puntillo + semicorchea en un pulso)
+- Implementa principios de Wikipedia sobre métrica y tarea.md (líneas 161-166)
+
+### 13. Cohesión Melódica con Motivo Rítmico ⭐ NUEVO
+- **Motivo rítmico único**: Se genera UN patrón rítmico base para toda la pieza
+- **Economía de materiales**: Reutilización del motivo en lugar de ritmos aleatorios
+- **Variaciones sutiles**: Retrogradación aplicada en 30% de compases (excepto cadencias)
+- **Estructura de uso**:
+  - Compases 1-2: Motivo original (establece identidad)
+  - Compases 3-6: 70% original, 30% variaciones
+  - Compases 7-8: Motivo original (cadencias para claridad)
+- **Resultado**: Melodías más orgánicas, cantábiles y memorables
+- Principio (tarea.md líneas 128-130): "No inventes ritmos nuevos constantemente"
 
 ## Instalación
 

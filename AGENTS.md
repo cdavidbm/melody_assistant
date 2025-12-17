@@ -82,4 +82,13 @@
 - ✅ Tenoris system (quinta as nota tenens, Gregorian tradition)
 - ✅ Standard LilyPond notation (Dutch: is/es)
 - ✅ Professional output format (header, strict beaming)
-- ✅ Rhythm validation (measures sum exactly to quarterLength)
+- ✅ **Rhythm anchored to beats** (no involuntary syncopation)
+- ✅ **Rhythmic motif consistency** (melodic cohesion via material economy)
+
+## Cohesion and Phrasing System
+- **Beat-by-beat rhythm generation**: Each beat is an indivisible unit, respects strong/weak hierarchy
+- **Base rhythmic motif**: ONE pattern generated at start, reused throughout piece
+- **Subtle variations**: Retrograde applied in 30% of measures (except cadences)
+- **Structure**: Bars 1-2 (establish identity), 3-6 (variations), 7-8 (original for cadences)
+- **Result**: Organic, singable, memorable melodies with clear identity
+- **Principle** (tarea.md lines 128-130): "Economy of materials - don't invent new rhythms constantly"
