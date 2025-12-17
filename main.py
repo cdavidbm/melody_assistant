@@ -187,6 +187,10 @@ class MelodicArchitect:
         self.original_motif: Optional[Motif] = None
         self.current_variation: MotivicVariation = MotivicVariation.ORIGINAL
 
+        # NUEVO: Motivo rítmico base (para cohesión melódica)
+        # Se genera una sola vez y se reutiliza con variaciones
+        self.base_rhythmic_motif: Optional[RhythmicPattern] = None
+
         # Reglas melódicas teóricas
         self.max_interval = max_interval
         self.use_tenoris = use_tenoris
@@ -437,6 +441,76 @@ class MelodicArchitect:
                     MotivicVariation.ORIGINAL,
                 ]
             )
+
+    def _get_rhythmic_pattern_with_variation(
+        self, measure_index: int
+    ) -> RhythmicPattern:
+        """
+        Obtiene el patrón rítmico para este compás, aplicando variaciones al motivo base.
+
+        PRINCIPIO (tarea.md líneas 128-130):
+        "Economía de materiales": Reutilizar el motivo rítmico inicial con variaciones
+        sutiles en lugar de generar ritmos completamente nuevos.
+
+        Args:
+            measure_index: Índice del compás (0 = primer compás)
+
+        Returns:
+            RhythmicPattern basado en el motivo original con posibles variaciones
+        """
+        # Si no existe motivo base, generar uno nuevo (debería haberse creado en generate_period)
+        if self.base_rhythmic_motif is None:
+            return self.create_rhythmic_pattern(self.meter_tuple[0])
+
+        # Primer compás: usar motivo original sin cambios
+        if measure_index == 0:
+            return self.base_rhythmic_motif
+
+        # Segundo compás: repetir motivo exacto (establecer identidad)
+        if measure_index == 1:
+            return self.base_rhythmic_motif
+
+        # Cadencias: usar motivo original (claridad estructural)
+        midpoint = self.num_measures // 2
+        is_antecedent_end = measure_index == midpoint - 1
+        is_period_end = measure_index == self.num_measures - 1
+
+        if is_antecedent_end or is_period_end:
+            return self.base_rhythmic_motif
+
+        # Otros compases: aplicar variaciones sutiles con probabilidad
+        if random.random() < 0.3:  # 30% de variación
+            return self._apply_rhythmic_variation(self.base_rhythmic_motif)
+        else:
+            # 70% del tiempo: mantener motivo original
+            return self.base_rhythmic_motif
+
+    def _apply_rhythmic_variation(self, motif: RhythmicPattern) -> RhythmicPattern:
+        """
+        Aplica una variación sutil al motivo rítmico manteniendo su identidad.
+
+        Variaciones posibles:
+        - Retrogradación: Tocar el motivo al revés
+        - Mantener: Sin cambios (para estabilidad)
+
+        Args:
+            motif: Motivo rítmico original
+
+        Returns:
+            Motivo variado
+        """
+        variation_type = random.choice(["retrograde", "original", "original"])
+
+        if variation_type == "retrograde":
+            # Retrogradación: invertir el orden de las duraciones
+            reversed_durations = list(reversed(motif.durations))
+            return RhythmicPattern(
+                durations=reversed_durations,
+                strong_beat_indices=motif.strong_beat_indices,
+            )
+        else:
+            # Mantener original
+            return motif
 
     def create_rhythmic_pattern(self, num_beats: int) -> RhythmicPattern:
         """
@@ -981,7 +1055,9 @@ class MelodicArchitect:
             cadence_type: "authentic" (V-I) o "half" (I-V o II-V)
         """
         notes = []
-        rhythm_pattern = self.create_rhythmic_pattern(self.meter_tuple[0])
+
+        # MEJORA: Usar motivo rítmico base con variaciones para cohesión
+        rhythm_pattern = self._get_rhythmic_pattern_with_variation(measure_index)
 
         # Iterar por cada duración en el patrón rítmico
         current_position = Fraction(0)  # Posición en quarterLength
@@ -1202,8 +1278,14 @@ class MelodicArchitect:
         """
         Genera un período musical completo (Antecedente + Consecuente).
         Implementa la estructura de pregunta-respuesta con cadencias apropiadas.
+
+        MEJORA: Genera un motivo rítmico base que se reutiliza para cohesión.
         """
         staff = abjad.Staff(name="Melodia")
+
+        # NUEVO: Generar motivo rítmico base (se reutiliza en toda la pieza)
+        # Esto crea cohesión melódica según tarea.md: "economía de materiales"
+        self.base_rhythmic_motif = self.create_rhythmic_pattern(self.meter_tuple[0])
 
         midpoint = self.num_measures // 2
 
