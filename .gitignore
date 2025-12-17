@@ -19,6 +19,9 @@ env/
 *.swp
 *.swo
 
+# Linting
+.ruff_cache/
+
 # LilyPond output
 *.pdf
 *.midi
