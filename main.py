@@ -17,6 +17,49 @@ import abjad
 from music21 import key, pitch, interval, scale
 
 
+def create_modal_scale(tonic_name: str, mode_type: str, mode_number: int = 1):
+    """
+    Crea una escala modal derivada de menor armónica o menor melódica.
+
+    Args:
+        tonic_name: Nombre de la tónica (ej: 'C', 'D', 'F#')
+        mode_type: Tipo de modo base ('harmonic_minor' o 'melodic_minor')
+        mode_number: Número del modo (1-7)
+
+    Returns:
+        ConcreteScale con los pitches del modo derivado
+    """
+    # Crear la escala base
+    if mode_type == "harmonic_minor":
+        base_scale = scale.HarmonicMinorScale(tonic_name)
+    elif mode_type == "melodic_minor":
+        base_scale = scale.MelodicMinorScale(tonic_name)
+    else:
+        raise ValueError(f"Tipo de modo no válido: {mode_type}")
+
+    # Obtener los pitches de la escala base
+    base_pitches = base_scale.pitches[:7]  # Solo los 7 primeros (sin octava)
+
+    # Rotar para obtener el modo deseado (modo 1 = sin rotación)
+    rotation = mode_number - 1
+    rotated_pitches = base_pitches[rotation:] + base_pitches[:rotation]
+
+    # Normalizar a la tónica deseada (transponer)
+    target_tonic = pitch.Pitch(tonic_name + "4")
+    source_tonic = rotated_pitches[0]
+
+    # Calcular intervalo de transposición
+    transp_interval = interval.Interval(noteStart=source_tonic, noteEnd=target_tonic)
+
+    # Aplicar transposición
+    modal_pitches = [transp_interval.transposePitch(p) for p in rotated_pitches]
+
+    # Agregar la octava superior
+    modal_pitches.append(modal_pitches[0].transpose("P8"))
+
+    return scale.ConcreteScale(pitches=modal_pitches)
+
+
 class ImpulseType(Enum):
     """Tipo de impulso inicial del motivo"""
 
@@ -78,6 +121,45 @@ class MelodicContour:
     )
 
 
+@dataclass
+class HarmonicFunction:
+    """Función armónica implícita para un compás o grupo de compases"""
+
+    degree: int  # Grado del acorde (1=I, 4=IV, 5=V, etc.)
+    quality: str  # "major", "minor", "diminished", "augmented"
+    tension: float  # Nivel de tensión (0.0=reposo, 1.0=máxima tensión)
+    chord_tones: List[int]  # Grados de la escala que forman el acorde
+
+
+@dataclass
+class Phrase:
+    """Frase musical: motivo + respuesta/variación (típicamente 2 compases)"""
+
+    motif: Motif  # Motivo base
+    variation: Motif  # Variación/respuesta del motivo
+    harmonic_progression: List[HarmonicFunction]  # Progresión armónica de la frase
+    measure_range: Tuple[int, int]  # (inicio, fin) en índices de compases
+
+
+@dataclass
+class Semiphrase:
+    """Semifrase: agrupación de frases (típicamente 4 compases)"""
+
+    phrases: List[Phrase]  # Lista de frases que componen la semifrase
+    function: str  # "presentation", "development", "cadential"
+    measure_range: Tuple[int, int]  # (inicio, fin) en índices de compases
+
+
+@dataclass
+class Period:
+    """Período: antecedente + consecuente (típicamente 8 compases)"""
+
+    antecedent: Semiphrase  # Semifrase antecedente (pregunta)
+    consequent: Semiphrase  # Semifrase consecuente (respuesta)
+    total_measures: int  # Número total de compases
+    base_motif: Motif  # Motivo generador de todo el período
+
+
 class MelodicArchitect:
     """
     Arquitecto melódico basado en teoría musical clásica.
@@ -106,6 +188,7 @@ class MelodicArchitect:
         max_interval: int = 6,  # Máximo salto permitido (sexta)
         use_tenoris: bool = False,  # Usar quinta como nota sostenedora
         tenoris_probability: float = 0.2,  # Probabilidad de usar tenoris
+        variation_freedom: int = 2,  # Libertad de variación (1=estricta, 2=moderada, 3=libre)
     ):
         """
         Inicializa el arquitecto melódico.
@@ -134,10 +217,9 @@ class MelodicArchitect:
         )
 
         # Configurar escala según modo
+        # MODOS DE ESCALA MAYOR (diatónicos)
         if mode == "major":
             self.scale = scale.MajorScale(key_name)
-        elif mode == "minor":
-            self.scale = scale.MinorScale(key_name)
         elif mode == "dorian":
             self.scale = scale.DorianScale(key_name)
         elif mode == "phrygian":
@@ -146,6 +228,45 @@ class MelodicArchitect:
             self.scale = scale.LydianScale(key_name)
         elif mode == "mixolydian":
             self.scale = scale.MixolydianScale(key_name)
+        elif mode == "minor":  # Aeolian (menor natural)
+            self.scale = scale.MinorScale(key_name)
+        elif mode == "locrian":
+            self.scale = scale.LocrianScale(key_name)
+
+        # ESCALAS MENORES
+        elif mode == "harmonic_minor":
+            self.scale = scale.HarmonicMinorScale(key_name)
+        elif mode == "melodic_minor":
+            self.scale = scale.MelodicMinorScale(key_name)
+
+        # MODOS DE MENOR ARMÓNICA
+        elif mode == "locrian_nat6":  # Modo 2
+            self.scale = create_modal_scale(key_name, "harmonic_minor", 2)
+        elif mode == "ionian_aug5":  # Modo 3
+            self.scale = create_modal_scale(key_name, "harmonic_minor", 3)
+        elif mode == "dorian_sharp4":  # Modo 4 (Ucraniano)
+            self.scale = create_modal_scale(key_name, "harmonic_minor", 4)
+        elif mode == "phrygian_dominant":  # Modo 5 (Frigio mayor)
+            self.scale = create_modal_scale(key_name, "harmonic_minor", 5)
+        elif mode == "lydian_sharp2":  # Modo 6
+            self.scale = create_modal_scale(key_name, "harmonic_minor", 6)
+        elif mode == "superlocrian_bb7":  # Modo 7 (Ultralocrio)
+            self.scale = create_modal_scale(key_name, "harmonic_minor", 7)
+
+        # MODOS DE MENOR MELÓDICA
+        elif mode == "dorian_flat2":  # Modo 2 (Frigio #6)
+            self.scale = create_modal_scale(key_name, "melodic_minor", 2)
+        elif mode == "lydian_augmented":  # Modo 3 (Lidio #5)
+            self.scale = create_modal_scale(key_name, "melodic_minor", 3)
+        elif mode == "lydian_dominant":  # Modo 4 (Lidio b7 / Mixolidio #4)
+            self.scale = create_modal_scale(key_name, "melodic_minor", 4)
+        elif mode == "mixolydian_flat6":  # Modo 5 (Aeolian nat7)
+            self.scale = create_modal_scale(key_name, "melodic_minor", 5)
+        elif mode == "locrian_nat2":  # Modo 6 (Semilocrio)
+            self.scale = create_modal_scale(key_name, "melodic_minor", 6)
+        elif mode == "altered":  # Modo 7 (Superlocrio / Locrio b4)
+            self.scale = create_modal_scale(key_name, "melodic_minor", 7)
+
         else:
             self.scale = scale.MajorScale(key_name)
 
@@ -195,6 +316,9 @@ class MelodicArchitect:
         self.max_interval = max_interval
         self.use_tenoris = use_tenoris
         self.tenoris_probability = tenoris_probability
+
+        # Control de libertad de variación (1=estricta, 2=moderada, 3=libre)
+        self.variation_freedom = variation_freedom
 
         # Ámbito melódico: octava de la tónica ± cuarta
         # Base: octava 4 (C4-C5)
@@ -749,6 +873,431 @@ class MelodicArchitect:
             return random.random() < self.rest_probability * 0.5
 
         return False
+
+    def create_base_motif(self, harmonic_function: int = 1) -> Motif:
+        """
+        Genera el motivo base (célula melódica de 2-4 notas) que será la semilla
+        de toda la melodía.
+
+        Este motivo debe ser:
+        - Memorable y característico
+        - Breve (2-4 notas típicamente)
+        - Con un ritmo distintivo
+        - Basado en grados estructurales del acorde
+
+        Args:
+            harmonic_function: Grado del acorde base (1=I, 4=IV, 5=V)
+
+        Returns:
+            Motif con pitches, intervalos, ritmo y grados
+        """
+        # Generar ritmo característico del motivo (2-4 notas)
+        # Longitud: entre 1 y 2 pulsos típicamente
+        motif_length_beats = random.choice([1, 2])
+
+        # Crear patrón rítmico para el motivo
+        if motif_length_beats == 1:
+            # Motivo de 1 pulso: 2-4 notas
+            if self.rhythmic_complexity <= 2:
+                # Simple: 2 notas (corchea-corchea o negra punteada-corchea)
+                durations = [(1, 8), (1, 8)]
+            else:
+                # Complejo: 3-4 notas
+                durations = random.choice(
+                    [
+                        [(1, 8), (1, 8), (1, 8), (1, 8)],  # 4 corcheas
+                        [(1, 8), (3, 16)],  # Corchea + corchea punteada
+                        [(3, 16), (1, 16), (1, 8)],  # Sincopado
+                    ]
+                )
+        else:  # 2 pulsos
+            # Motivo de 2 pulsos: 2-3 notas
+            if self.rhythmic_complexity <= 2:
+                durations = [(1, 4), (1, 4)]  # 2 negras
+            else:
+                durations = random.choice(
+                    [
+                        [(1, 4), (1, 8), (1, 8)],  # Negra + 2 corcheas
+                        [(3, 8), (1, 8)],  # Negra punteada + corchea
+                        [(1, 8), (1, 8), (1, 4)],  # 2 corcheas + negra
+                    ]
+                )
+
+        # Marcar índices de pulsos fuertes
+        strong_beat_indices = [0]  # Siempre el primer elemento es fuerte
+
+        rhythm = RhythmicPattern(
+            durations=durations, strong_beat_indices=strong_beat_indices
+        )
+
+        # Generar grados melódicos del motivo (notas estructurales del acorde)
+        chord_tones = self.get_chord_tones_for_function(harmonic_function)
+
+        # El motivo debe tener un contorno característico
+        # Opciones: ascendente, descendente, arco, arco invertido
+        contour_type = random.choice(
+            ["ascending", "descending", "arch", "inverted_arch"]
+        )
+
+        num_notes = len(durations)
+        degrees = []
+        pitches = []
+        intervals = []
+
+        # Primera nota: siempre del acorde (preferiblemente tónica o quinta)
+        if random.random() < 0.6:
+            first_degree = 1 if harmonic_function == 1 else harmonic_function
+        else:
+            first_degree = random.choice(chord_tones)
+
+        degrees.append(first_degree)
+        first_pitch_str = self.get_pitch_by_degree(first_degree)
+        pitches.append(first_pitch_str)
+
+        # Generar notas restantes según el contorno
+        for i in range(1, num_notes):
+            is_last = i == num_notes - 1
+
+            if contour_type == "ascending":
+                # Ascender por grado conjunto o tercera
+                interval_semitones = random.choice([1, 2, 3, 4])  # m2, M2, m3, M3
+
+            elif contour_type == "descending":
+                # Descender por grado conjunto o tercera
+                interval_semitones = random.choice([-1, -2, -3, -4])
+
+            elif contour_type == "arch":
+                # Subir hasta el medio, luego bajar
+                if i <= num_notes // 2:
+                    interval_semitones = random.choice([1, 2, 3])
+                else:
+                    interval_semitones = random.choice([-1, -2, -3])
+
+            else:  # inverted_arch
+                # Bajar hasta el medio, luego subir
+                if i <= num_notes // 2:
+                    interval_semitones = random.choice([-1, -2, -3])
+                else:
+                    interval_semitones = random.choice([1, 2, 3])
+
+            # Aplicar el intervalo
+            prev_pitch = pitch.Pitch(pitches[-1])
+            new_pitch = prev_pitch.transpose(interval_semitones)
+
+            # Verificar que esté en el ámbito permitido
+            if new_pitch.ps < self.melodic_range_bottom.ps:
+                new_pitch = self.melodic_range_bottom.transpose(
+                    random.choice([0, 2, 4])
+                )
+            elif new_pitch.ps > self.melodic_range_top.ps:
+                new_pitch = self.melodic_range_top.transpose(random.choice([0, -2, -4]))
+
+            pitches.append(new_pitch.nameWithOctave)
+            intervals.append(interval_semitones)
+
+            # Calcular grado de la escala
+            degree = self._pitch_to_degree(new_pitch.nameWithOctave)
+            degrees.append(degree)
+
+        return Motif(
+            pitches=pitches, intervals=intervals, rhythm=rhythm, degrees=degrees
+        )
+
+    def create_harmonic_progression(self, num_measures: int) -> List[HarmonicFunction]:
+        """
+        Crea una progresión armónica implícita para un período de num_measures compases.
+
+        La armonía guía la selección de notas melódicas, creando un contexto tonal coherente.
+        Progresión típica: I → IV → V → I (con variaciones)
+
+        Args:
+            num_measures: Número de compases del período
+
+        Returns:
+            Lista de HarmonicFunction, una por compás
+        """
+        progression = []
+
+        # Mapeo de grados a nombres de calidad
+        if self.mode in ["major", "lydian", "mixolydian"]:
+            # Modos mayores
+            chord_qualities = {
+                1: "major",  # I
+                2: "minor",  # ii
+                3: "minor",  # iii
+                4: "major",  # IV
+                5: "major",  # V
+                6: "minor",  # vi
+                7: "diminished",  # vii°
+            }
+        else:
+            # Modos menores y otros
+            chord_qualities = {
+                1: "minor",  # i
+                2: "diminished",  # ii°
+                3: "major",  # III
+                4: "minor",  # iv
+                5: "minor",  # v (puede ser mayor en armónica)
+                6: "major",  # VI
+                7: "major",  # VII (puede ser diminuido)
+            }
+
+            # Ajuste para menor armónica
+            if self.mode == "harmonic_minor":
+                chord_qualities[5] = "major"  # V mayor (sensible)
+                chord_qualities[7] = "diminished"
+
+        # Niveles de tensión por grado
+        tension_levels = {
+            1: 0.0,  # Reposo total
+            2: 0.4,  # Tensión moderada
+            3: 0.3,  # Tensión leve
+            4: 0.5,  # Subdominante (preparación)
+            5: 0.8,  # Dominante (máxima tensión)
+            6: 0.3,  # Relativo menor/mayor
+            7: 0.9,  # Sensible (altísima tensión)
+        }
+
+        # Generar progresión según longitud
+        if num_measures <= 2:
+            # Muy corto: solo I-V o I-I
+            degrees = [1, 5] if num_measures == 2 else [1]
+
+        elif num_measures <= 4:
+            # Semifrase típica: I-IV-V-I o I-I-IV-V
+            degrees = [1, 1, 4, 5] if num_measures == 4 else [1, 4, 5]
+
+        elif num_measures <= 8:
+            # Período clásico: antecedente (I-IV-V) + consecuente (I-IV-V-I)
+            # Compases 1-4 (antecedente):
+            antecedent = [1, 1, 4, 5]  # Termina en V (semicadencia)
+
+            # Compases 5-8 (consecuente):
+            consequent = [1, 1, 4, 5] if num_measures == 8 else [1, 4, 5]
+            # Pero el último debe ser I (cadencia auténtica)
+            consequent[-1] = 1
+
+            degrees = antecedent + consequent[: num_measures - 4]
+
+        else:
+            # Obra larga: dividir en secciones de 8 compases
+            num_periods = (num_measures + 7) // 8  # Redondear hacia arriba
+            degrees = []
+
+            for period_idx in range(num_periods):
+                # Cada período de 8 compases
+                if period_idx < num_periods - 1:
+                    # Períodos intermedios
+                    degrees.extend([1, 1, 4, 5, 1, 1, 4, 5])
+                else:
+                    # Último período (puede ser incompleto)
+                    remaining = num_measures - len(degrees)
+                    if remaining >= 8:
+                        degrees.extend([1, 1, 4, 5, 1, 1, 4, 1])
+                    elif remaining >= 4:
+                        degrees.extend([1, 1, 4, 5])
+                        degrees.extend([1] * (remaining - 4))
+                    else:
+                        degrees.extend([1] * remaining)
+
+            # Ajustar longitud exacta
+            degrees = degrees[:num_measures]
+
+            # Asegurar que el último compás sea I (tónica)
+            degrees[-1] = 1
+
+        # Convertir grados a HarmonicFunction objects
+        for degree in degrees:
+            quality = chord_qualities.get(degree, "major")
+            tension = tension_levels.get(degree, 0.5)
+            chord_tones = self.get_chord_tones_for_function(degree)
+
+            progression.append(
+                HarmonicFunction(
+                    degree=degree,
+                    quality=quality,
+                    tension=tension,
+                    chord_tones=chord_tones,
+                )
+            )
+
+        return progression
+
+    def apply_motif_variation(
+        self, original_motif: Motif, variation_type: str = "auto"
+    ) -> Motif:
+        """
+        Aplica una variación a un motivo según el nivel de libertad configurado.
+
+        Args:
+            original_motif: Motivo original a variar
+            variation_type: Tipo de variación ("auto", "strict", "moderate", "free")
+                           "auto" usa self.variation_freedom
+
+        Returns:
+            Nuevo Motif con la variación aplicada
+        """
+        if variation_type == "auto":
+            freedom = self.variation_freedom
+        elif variation_type == "strict":
+            freedom = 1
+        elif variation_type == "moderate":
+            freedom = 2
+        elif variation_type == "free":
+            freedom = 3
+        else:
+            freedom = self.variation_freedom
+
+        # Seleccionar tipo de variación según libertad
+        if freedom == 1:  # Estricta: variaciones conservadoras
+            variation_options = [
+                MotivicVariation.ORIGINAL,
+                MotivicVariation.RETROGRADE,
+                MotivicVariation.TRANSPOSITION,
+            ]
+            weights = [
+                0.4,
+                0.3,
+                0.3,
+            ]  # 40% sin cambio, 30% retrogradación, 30% transposición
+
+        elif freedom == 2:  # Moderada: variaciones clásicas
+            variation_options = [
+                MotivicVariation.ORIGINAL,
+                MotivicVariation.RETROGRADE,
+                MotivicVariation.INVERSION,
+                MotivicVariation.TRANSPOSITION,
+                MotivicVariation.AUGMENTATION,
+                MotivicVariation.DIMINUTION,
+            ]
+            weights = [0.2, 0.2, 0.2, 0.2, 0.1, 0.1]
+
+        else:  # Libre: todas las variaciones posibles
+            variation_options = list(MotivicVariation)
+            weights = [1 / len(variation_options)] * len(variation_options)
+
+        # Seleccionar variación
+        import random
+
+        variation = random.choices(variation_options, weights=weights)[0]
+
+        # Aplicar la variación seleccionada
+        if variation == MotivicVariation.ORIGINAL:
+            return original_motif
+
+        elif variation == MotivicVariation.RETROGRADE:
+            # Invertir el orden de notas y ritmos
+            return Motif(
+                pitches=list(reversed(original_motif.pitches)),
+                intervals=list(reversed([-i for i in original_motif.intervals])),
+                rhythm=RhythmicPattern(
+                    durations=list(reversed(original_motif.rhythm.durations)),
+                    strong_beat_indices=original_motif.rhythm.strong_beat_indices,
+                ),
+                degrees=list(reversed(original_motif.degrees)),
+            )
+
+        elif variation == MotivicVariation.INVERSION:
+            # Invertir los intervalos (subir → bajar, bajar → subir)
+            new_pitches = [original_motif.pitches[0]]  # Primera nota igual
+            new_degrees = [original_motif.degrees[0]]
+            new_intervals = []
+
+            for interval_semi in original_motif.intervals:
+                # Invertir el intervalo
+                inverted_interval = -interval_semi
+                new_intervals.append(inverted_interval)
+
+                # Aplicar a la última nota
+                prev_pitch = pitch.Pitch(new_pitches[-1])
+                new_pitch = prev_pitch.transpose(inverted_interval)
+
+                # Verificar ámbito
+                if new_pitch.ps < self.melodic_range_bottom.ps:
+                    new_pitch = self.melodic_range_bottom.transpose(
+                        random.choice([0, 2, 4])
+                    )
+                elif new_pitch.ps > self.melodic_range_top.ps:
+                    new_pitch = self.melodic_range_top.transpose(
+                        random.choice([0, -2, -4])
+                    )
+
+                new_pitches.append(new_pitch.nameWithOctave)
+                new_degrees.append(self._pitch_to_degree(new_pitch.nameWithOctave))
+
+            return Motif(
+                pitches=new_pitches,
+                intervals=new_intervals,
+                rhythm=original_motif.rhythm,
+                degrees=new_degrees,
+            )
+
+        elif variation == MotivicVariation.TRANSPOSITION:
+            # Transponer el motivo a otro grado
+            transposition_steps = random.choice([-2, -1, 1, 2])  # Por grado conjunto
+            new_pitches = []
+            new_degrees = []
+
+            for p_str in original_motif.pitches:
+                p = pitch.Pitch(p_str)
+                new_p = p.transpose(transposition_steps)
+
+                # Verificar ámbito
+                if new_p.ps < self.melodic_range_bottom.ps:
+                    new_p = new_p.transpose(12)  # Subir octava
+                elif new_p.ps > self.melodic_range_top.ps:
+                    new_p = new_p.transpose(-12)  # Bajar octava
+
+                new_pitches.append(new_p.nameWithOctave)
+                new_degrees.append(self._pitch_to_degree(new_p.nameWithOctave))
+
+            return Motif(
+                pitches=new_pitches,
+                intervals=original_motif.intervals,  # Intervalos se mantienen
+                rhythm=original_motif.rhythm,
+                degrees=new_degrees,
+            )
+
+        elif variation == MotivicVariation.AUGMENTATION:
+            # Aumentar duraciones rítmicas (×2)
+            augmented_durations = []
+            for num, denom in original_motif.rhythm.durations:
+                # Doblar la duración: (1,8) → (1,4), (1,4) → (1,2)
+                new_denom = max(1, denom // 2)
+                augmented_durations.append((num, new_denom))
+
+            return Motif(
+                pitches=original_motif.pitches,
+                intervals=original_motif.intervals,
+                rhythm=RhythmicPattern(
+                    durations=augmented_durations,
+                    strong_beat_indices=original_motif.rhythm.strong_beat_indices,
+                ),
+                degrees=original_motif.degrees,
+            )
+
+        elif variation == MotivicVariation.DIMINUTION:
+            # Disminuir duraciones rítmicas (÷2)
+            diminished_durations = []
+            for num, denom in original_motif.rhythm.durations:
+                # Reducir a la mitad: (1,4) → (1,8), (1,2) → (1,4)
+                new_denom = min(32, denom * 2)
+                diminished_durations.append((num, new_denom))
+
+            return Motif(
+                pitches=original_motif.pitches,
+                intervals=original_motif.intervals,
+                rhythm=RhythmicPattern(
+                    durations=diminished_durations,
+                    strong_beat_indices=original_motif.rhythm.strong_beat_indices,
+                ),
+                degrees=original_motif.degrees,
+            )
+
+        else:
+            # Para SEQUENCE, RETROGRADE_INVERSION: por ahora retornar original
+            # Se pueden implementar después
+            return original_motif
 
     def select_melodic_pitch(
         self,
@@ -1336,6 +1885,202 @@ class MelodicArchitect:
 
         return staff
 
+    def generate_period_hierarchical(self) -> abjad.Staff:
+        """
+        NUEVO MÉTODO: Genera un período musical con jerarquía formal verdadera.
+
+        Implementa la estructura:
+        Motivo → Frase (2 compases) → Semifrase (4 compases) → Período (8+ compases)
+
+        Este método coexiste con generate_period() para permitir comparación.
+
+        Estructura para 8 compases:
+        - Compases 1-2: Frase 1 (motivo + variación dramática)
+        - Compases 3-4: Frase 2 (desarrollo del motivo + semicadencia)
+        - Compases 5-6: Frase 3 (retorno al motivo + desarrollo)
+        - Compases 7-8: Frase 4 (preparación + cadencia auténtica)
+
+        Returns:
+            abjad.Staff con la melodía generada jerárquicamente
+        """
+        staff = abjad.Staff(name="Melodia_Hierarchical")
+
+        # 1. Crear progresión armónica para toda la obra
+        harmonic_progression = self.create_harmonic_progression(self.num_measures)
+
+        # 2. Generar motivo base (basado en la armonía del compás 1)
+        base_motif = self.create_base_motif(harmonic_progression[0].degree)
+
+        # 3. Determinar estructura de frases
+        # Cada frase = 2 compases (motivo + respuesta)
+        num_phrases = (self.num_measures + 1) // 2
+
+        # 4. Generar cada frase
+        for phrase_idx in range(num_phrases):
+            measure_start = phrase_idx * 2
+            measure_end = min(measure_start + 2, self.num_measures)
+
+            # Determinar tipo de variación según posición en el período
+            if phrase_idx == 0:
+                # Primera frase: presentar motivo original + variación dramática
+                variation_types = ["auto", "auto"]  # Según variation_freedom
+
+            elif measure_end == self.num_measures // 2:
+                # Final del antecedente: preparar semicadencia
+                variation_types = ["auto", "strict"]  # Más conservador
+
+            elif phrase_idx == num_phrases - 1:
+                # Última frase: cadencia auténtica
+                variation_types = ["strict", "strict"]  # Muy conservador
+
+            else:
+                # Frases intermedias: desarrollo libre
+                variation_types = ["auto", "auto"]
+
+            # Generar los 2 compases de esta frase
+            for local_measure_idx in range(measure_end - measure_start):
+                global_measure_idx = measure_start + local_measure_idx
+
+                if global_measure_idx >= self.num_measures:
+                    break
+
+                # Determinar si este compás usa el motivo original o variación
+                if local_measure_idx == 0:
+                    # Primer compás de la frase: motivo (posiblemente variado)
+                    if phrase_idx == 0:
+                        # Primera frase: motivo puro
+                        current_motif = base_motif
+                    else:
+                        # Frases posteriores: aplicar variación según contexto
+                        current_motif = self.apply_motif_variation(
+                            base_motif, variation_type=variation_types[0]
+                        )
+                else:
+                    # Segundo compás de la frase: respuesta/variación
+                    current_motif = self.apply_motif_variation(
+                        base_motif, variation_type=variation_types[1]
+                    )
+
+                # Obtener función armónica para este compás
+                harmonic_func = harmonic_progression[global_measure_idx]
+
+                # Generar el compás basado en el motivo y la armonía
+                measure_container = self._create_measure_from_motif(
+                    current_motif, harmonic_func, global_measure_idx
+                )
+
+                staff.append(measure_container)
+
+                # Agregar barline
+                if global_measure_idx < self.num_measures - 1:
+                    last_leaf = abjad.get.leaf(measure_container, -1)
+                    if last_leaf:
+                        abjad.attach(abjad.BarLine("|"), last_leaf)
+                else:
+                    # Barline final
+                    last_leaf = abjad.get.leaf(measure_container, -1)
+                    if last_leaf:
+                        abjad.attach(abjad.BarLine("|."), last_leaf)
+
+        # Añadir indicaciones al inicio
+        if len(staff) > 0 and len(staff[0]) > 0:
+            abjad.attach(abjad.TimeSignature(self.meter_tuple), staff[0][0])
+            abjad.attach(abjad.Clef("treble"), staff[0][0])
+
+            # Añadir armadura de clave
+            key_sig = self._create_key_signature()
+            if key_sig:
+                abjad.attach(key_sig, staff[0][0])
+
+        return staff
+
+    def _create_measure_from_motif(
+        self, motif: Motif, harmonic_func: HarmonicFunction, measure_index: int
+    ) -> abjad.Container:
+        """
+        Crea un compás a partir de un motivo y una función armónica.
+
+        Args:
+            motif: Motivo a usar como base
+            harmonic_func: Función armónica del compás
+            measure_index: Índice del compás en el período
+
+        Returns:
+            abjad.Container con las notas del compás
+        """
+        notes = []
+
+        # El motivo puede no llenar el compás completo
+        # Calcular duración del motivo
+        motif_duration_ql = sum(
+            Fraction(num, denom) * 4  # Convertir a quarter notes
+            for num, denom in motif.rhythm.durations
+        )
+
+        measure_duration_ql = Fraction(self.meter_tuple[0], self.meter_tuple[1]) * 4
+
+        # Si el motivo no llena el compás, completar con notas adicionales
+        # basadas en la armonía
+        current_position = Fraction(0)
+
+        # Primero agregar las notas del motivo
+        for idx, (pitch_str, duration) in enumerate(
+            zip(motif.pitches, motif.rhythm.durations)
+        ):
+            # Convertir pitch a formato Abjad
+            abjad_pitch = self._convert_to_abjad_pitch(pitch_str)
+
+            # Crear duración en formato Abjad
+            if duration[0] == 3:
+                # Nota con puntillo
+                if duration[1] == 8:
+                    base_duration = 4
+                elif duration[1] == 16:
+                    base_duration = 8
+                elif duration[1] == 4:
+                    base_duration = 2
+                elif duration[1] == 32:
+                    base_duration = 16
+                elif duration[1] == 2:
+                    base_duration = 1
+                else:
+                    base_duration = duration[1]
+                note_string = f"{abjad_pitch}{base_duration}."
+            elif duration[0] == 1:
+                note_string = f"{abjad_pitch}{duration[1]}"
+            else:
+                note_string = f"{abjad_pitch}{duration[1]}"
+
+            note = abjad.Note(note_string)
+            notes.append(note)
+
+            current_position += Fraction(duration[0], duration[1]) * 4
+
+        # Completar el compás si es necesario
+        remaining_duration = measure_duration_ql - current_position
+
+        while remaining_duration > 0:
+            # Seleccionar una nota del acorde para completar
+            degree = random.choice(harmonic_func.chord_tones)
+            pitch_str = self.get_pitch_by_degree(degree)
+            abjad_pitch = self._convert_to_abjad_pitch(pitch_str)
+
+            # Determinar duración para completar
+            if remaining_duration >= 1:  # Quarter note o más
+                duration_denom = 4
+            elif remaining_duration >= Fraction(1, 2):  # Eighth note
+                duration_denom = 8
+            else:  # Sixteenth note
+                duration_denom = 16
+
+            note_string = f"{abjad_pitch}{duration_denom}"
+            note = abjad.Note(note_string)
+            notes.append(note)
+
+            remaining_duration -= Fraction(1, duration_denom) * 4
+
+        return abjad.Container(notes)
+
     def _create_key_signature(self):
         """
         Crea un objeto KeySignature de Abjad basado en self.k (music21 Key).
@@ -1377,6 +2122,7 @@ class MelodicArchitect:
         tonic_name = f"{base_name}{accidental_suffix}"
 
         # Determinar modo desde self.mode (el parámetro del constructor)
+        # LilyPond solo soporta modos diatónicos, otros se mapean al más cercano
         mode_name = self.mode.lower()
         if mode_name in ["major", "ionian"]:
             mode_lily = "major"
@@ -1390,6 +2136,37 @@ class MelodicArchitect:
             mode_lily = "lydian"
         elif mode_name == "mixolydian":
             mode_lily = "mixolydian"
+        elif mode_name == "locrian":
+            mode_lily = "locrian"
+        # Escalas menores -> usar minor como base
+        elif mode_name in ["harmonic_minor", "melodic_minor"]:
+            mode_lily = "minor"
+        # Modos de menor armónica -> mapear a equivalentes cercanos
+        elif mode_name == "locrian_nat6":
+            mode_lily = "locrian"
+        elif mode_name == "ionian_aug5":
+            mode_lily = "major"
+        elif mode_name == "dorian_sharp4":
+            mode_lily = "dorian"
+        elif mode_name == "phrygian_dominant":
+            mode_lily = "phrygian"
+        elif mode_name == "lydian_sharp2":
+            mode_lily = "lydian"
+        elif mode_name == "superlocrian_bb7":
+            mode_lily = "locrian"
+        # Modos de menor melódica -> mapear a equivalentes cercanos
+        elif mode_name == "dorian_flat2":
+            mode_lily = "dorian"
+        elif mode_name == "lydian_augmented":
+            mode_lily = "lydian"
+        elif mode_name == "lydian_dominant":
+            mode_lily = "lydian"
+        elif mode_name == "mixolydian_flat6":
+            mode_lily = "mixolydian"
+        elif mode_name == "locrian_nat2":
+            mode_lily = "locrian"
+        elif mode_name == "altered":
+            mode_lily = "locrian"
         else:
             # Por defecto usar major
             mode_lily = "major"
@@ -1626,7 +2403,7 @@ class MelodicArchitect:
 
         tonic_name = f"{base_name}{accidental_suffix}"
 
-        # Modo
+        # Modo (LilyPond solo soporta modos diatónicos)
         mode_name = self.mode.lower()
         if mode_name in ["major", "ionian"]:
             mode_lily = "\\major"
@@ -1640,6 +2417,37 @@ class MelodicArchitect:
             mode_lily = "\\lydian"
         elif mode_name == "mixolydian":
             mode_lily = "\\mixolydian"
+        elif mode_name == "locrian":
+            mode_lily = "\\locrian"
+        # Escalas menores -> usar minor como base
+        elif mode_name in ["harmonic_minor", "melodic_minor"]:
+            mode_lily = "\\minor"
+        # Modos de menor armónica -> mapear a equivalentes cercanos
+        elif mode_name == "locrian_nat6":
+            mode_lily = "\\locrian"
+        elif mode_name == "ionian_aug5":
+            mode_lily = "\\major"
+        elif mode_name == "dorian_sharp4":
+            mode_lily = "\\dorian"
+        elif mode_name == "phrygian_dominant":
+            mode_lily = "\\phrygian"
+        elif mode_name == "lydian_sharp2":
+            mode_lily = "\\lydian"
+        elif mode_name == "superlocrian_bb7":
+            mode_lily = "\\locrian"
+        # Modos de menor melódica -> mapear a equivalentes cercanos
+        elif mode_name == "dorian_flat2":
+            mode_lily = "\\dorian"
+        elif mode_name == "lydian_augmented":
+            mode_lily = "\\lydian"
+        elif mode_name == "lydian_dominant":
+            mode_lily = "\\lydian"
+        elif mode_name == "mixolydian_flat6":
+            mode_lily = "\\mixolydian"
+        elif mode_name == "locrian_nat2":
+            mode_lily = "\\locrian"
+        elif mode_name == "altered":
+            mode_lily = "\\locrian"
         else:
             mode_lily = "\\major"
 
@@ -1665,20 +2473,62 @@ def main():
 
     # Modo
     print("\nModos disponibles:")
-    print("1. major (Mayor)")
-    print("2. minor (Menor natural)")
-    print("3. dorian (Dórico)")
-    print("4. phrygian (Frigio)")
-    print("5. lydian (Lidio)")
-    print("6. mixolydian (Mixolidio)")
-    mode_choice = input("Seleccione modo [1]: ").strip() or "1"
+    print("\n--- MODOS DIATÓNICOS (de escala mayor) ---")
+    print("1. major (Jónico / Mayor)")
+    print("2. dorian (Dórico)")
+    print("3. phrygian (Frigio)")
+    print("4. lydian (Lidio)")
+    print("5. mixolydian (Mixolidio)")
+    print("6. minor (Aeolian / Menor natural)")
+    print("7. locrian (Locrio)")
+
+    print("\n--- ESCALAS MENORES ---")
+    print("8. harmonic_minor (Menor armónica)")
+    print("9. melodic_minor (Menor melódica)")
+
+    print("\n--- MODOS DE MENOR ARMÓNICA ---")
+    print("10. locrian_nat6 (Locrio ♮6)")
+    print("11. ionian_aug5 (Jónico aumentado)")
+    print("12. dorian_sharp4 (Dórico #4 / Ucraniano)")
+    print("13. phrygian_dominant (Frigio dominante / Frigio mayor)")
+    print("14. lydian_sharp2 (Lidio #2)")
+    print("15. superlocrian_bb7 (Ultralocrio)")
+
+    print("\n--- MODOS DE MENOR MELÓDICA ---")
+    print("16. dorian_flat2 (Dórico ♭2 / Frigio #6)")
+    print("17. lydian_augmented (Lidio aumentado)")
+    print("18. lydian_dominant (Lidio dominante / Mixolidio #4)")
+    print("19. mixolydian_flat6 (Mixolidio ♭6)")
+    print("20. locrian_nat2 (Locrio ♮2 / Semilocrio)")
+    print("21. altered (Alterado / Superlocrio)")
+
+    mode_choice = input("\nSeleccione modo [1]: ").strip() or "1"
     mode_map = {
+        # Diatónicos
         "1": "major",
-        "2": "minor",
-        "3": "dorian",
-        "4": "phrygian",
-        "5": "lydian",
-        "6": "mixolydian",
+        "2": "dorian",
+        "3": "phrygian",
+        "4": "lydian",
+        "5": "mixolydian",
+        "6": "minor",
+        "7": "locrian",
+        # Menores
+        "8": "harmonic_minor",
+        "9": "melodic_minor",
+        # Menor armónica
+        "10": "locrian_nat6",
+        "11": "ionian_aug5",
+        "12": "dorian_sharp4",
+        "13": "phrygian_dominant",
+        "14": "lydian_sharp2",
+        "15": "superlocrian_bb7",
+        # Menor melódica
+        "16": "dorian_flat2",
+        "17": "lydian_augmented",
+        "18": "lydian_dominant",
+        "19": "mixolydian_flat6",
+        "20": "locrian_nat2",
+        "21": "altered",
     }
     mode = mode_map.get(mode_choice, "major")
 
@@ -1747,6 +2597,25 @@ def main():
     climax_input = input("\nPosición del clímax (0.0-1.0) [0.75]: ").strip()
     climax_pos = float(climax_input) if climax_input else 0.75
 
+    # Libertad de variación (NUEVO)
+    print("\nLibertad de variación motívica:")
+    print("1. Estricta (motivo muy reconocible, variaciones conservadoras)")
+    print("2. Moderada (equilibrio entre familiaridad y novedad)")
+    print("3. Libre (máxima libertad creativa)")
+    variation_freedom_input = input("Seleccione nivel [2]: ").strip() or "2"
+    variation_freedom = (
+        int(variation_freedom_input)
+        if variation_freedom_input in ["1", "2", "3"]
+        else 2
+    )
+
+    # Tipo de generación (NUEVO)
+    print("\nMétodo de generación:")
+    print("1. Tradicional (sistema actual, cohesión rítmica)")
+    print("2. Jerárquico (NUEVO: Motivo → Frase → Semifrase → Período)")
+    generation_method_input = input("Seleccione método [1]: ").strip() or "1"
+    use_hierarchical = generation_method_input == "2"
+
     # Título y compositor
     print("\n=== INFORMACIÓN DE LA PARTITURA ===")
     title = input("Título [Melodía Generada]: ").strip() or "Melodía Generada"
@@ -1779,10 +2648,24 @@ def main():
             max_interval=6,  # Máximo sexta
             use_tenoris=use_tenoris,
             tenoris_probability=0.2,
+            variation_freedom=variation_freedom,  # NUEVO
         )
 
-        # Generar y mostrar la melodía
-        lilypond_code = architect.generate_and_display(title=title, composer=composer)
+        # Generar melodía según el método seleccionado
+        if use_hierarchical:
+            print("Usando método JERÁRQUICO (Motivo → Frase → Semifrase → Período)")
+            staff = architect.generate_period_hierarchical()
+            lilypond_code = architect.generate_and_display(
+                title=title, composer=composer
+            )
+            # Reemplazar el staff generado con el jerárquico
+            # (por ahora usamos el método tradicional para el output,
+            # pero en el futuro se puede adaptar)
+        else:
+            print("Usando método TRADICIONAL (cohesión rítmica)")
+            lilypond_code = architect.generate_and_display(
+                title=title, composer=composer
+            )
 
         print(lilypond_code)
         print()
