@@ -5,11 +5,11 @@ Implementa generación tradicional (cohesión rítmica) y jerárquica (formal).
 
 import random
 from fractions import Fraction
-from typing import Tuple
+from typing import List, Tuple, Optional
 
 import abjad
 
-from .models import Motif, HarmonicFunction
+from .models import Motif, HarmonicFunction, Phrase, Semiphrase, Period
 from .scales import ScaleManager
 from .harmony import HarmonyManager
 from .rhythm import RhythmGenerator
@@ -90,70 +90,221 @@ class PeriodGenerator:
 
         return staff
 
-    def generate_period_hierarchical(self) -> abjad.Staff:
+    def generate_period_hierarchical(
+        self, return_structure: bool = False
+    ) -> abjad.Staff | Tuple[abjad.Staff, Period]:
         """
         Genera un período musical con jerarquía formal verdadera.
 
         Implementa la estructura:
         Motivo → Frase (2 compases) → Semifrase (4 compases) → Período (8+ compases)
+
+        Args:
+            return_structure: Si True, retorna también la estructura Period
+
+        Returns:
+            Staff de Abjad, o tupla (Staff, Period) si return_structure=True
+        """
+        # 1. Crear el plan armónico completo
+        harmonic_plan = self.harmony_manager.create_harmonic_progression(
+            self.num_measures
+        )
+
+        # 2. Crear el motivo base generador
+        base_motif = self.motif_generator.create_base_motif(
+            harmonic_plan[0].degree
+        )
+
+        # 3. Construir la estructura jerárquica completa
+        period = self._build_period(base_motif, harmonic_plan)
+
+        # 4. Renderizar la estructura a Abjad Staff
+        staff = self._render_period_to_staff(period)
+
+        if return_structure:
+            return staff, period
+        return staff
+
+    def _build_phrase(
+        self,
+        base_motif: Motif,
+        harmonic_funcs: List[HarmonicFunction],
+        measure_start: int,
+        is_first_phrase: bool = False,
+        variation_type: str = "auto",
+    ) -> Phrase:
+        """
+        Construye una Phrase (2 compases) a partir de un motivo base.
+
+        Args:
+            base_motif: Motivo generador
+            harmonic_funcs: Funciones armónicas para los 2 compases
+            measure_start: Índice del compás inicial
+            is_first_phrase: Si es la primera frase del período
+            variation_type: Tipo de variación a aplicar
+
+        Returns:
+            Phrase con motivo original y variación
+        """
+        # Primer compás: motivo original o variación según contexto
+        if is_first_phrase:
+            motif_1 = base_motif
+        else:
+            motif_1 = self.motif_generator.apply_motif_variation(
+                base_motif, variation_type=variation_type
+            )
+
+        # Segundo compás: variación del motivo
+        motif_2 = self.motif_generator.apply_motif_variation(
+            base_motif, variation_type=variation_type
+        )
+
+        return Phrase(
+            motif=motif_1,
+            variation=motif_2,
+            harmonic_progression=harmonic_funcs,
+            measure_range=(measure_start, measure_start + 2),
+            variation_type=variation_type,
+        )
+
+    def _build_semiphrase(
+        self,
+        base_motif: Motif,
+        harmonic_funcs: List[HarmonicFunction],
+        measure_start: int,
+        function: str,
+        is_first_semiphrase: bool = False,
+    ) -> Semiphrase:
+        """
+        Construye una Semiphrase (típicamente 4 compases).
+
+        Args:
+            base_motif: Motivo generador
+            harmonic_funcs: Funciones armónicas para la semifrase
+            measure_start: Índice del compás inicial
+            function: "antecedent" o "consequent"
+            is_first_semiphrase: Si es la primera semifrase del período
+
+        Returns:
+            Semiphrase con sus frases constituyentes
+        """
+        phrases = []
+        num_measures = len(harmonic_funcs)
+        num_phrases = (num_measures + 1) // 2
+
+        # Determinar tipo de cadencia
+        cadence_type = "half" if function == "antecedent" else "authentic"
+
+        # Determinar variaciones según posición
+        for phrase_idx in range(num_phrases):
+            local_start = phrase_idx * 2
+            local_end = min(local_start + 2, num_measures)
+            phrase_harmonics = harmonic_funcs[local_start:local_end]
+
+            # Primera frase de la primera semifrase: usar motivo original
+            is_first = is_first_semiphrase and phrase_idx == 0
+
+            # Última frase: variación más estricta para coherencia cadencial
+            if phrase_idx == num_phrases - 1:
+                var_type = "strict"
+            elif function == "consequent":
+                var_type = "moderate"
+            else:
+                var_type = "auto"
+
+            phrase = self._build_phrase(
+                base_motif,
+                phrase_harmonics,
+                measure_start + local_start,
+                is_first_phrase=is_first,
+                variation_type=var_type,
+            )
+            phrases.append(phrase)
+
+        return Semiphrase(
+            phrases=phrases,
+            function=function,
+            cadence_type=cadence_type,
+            measure_range=(measure_start, measure_start + num_measures),
+        )
+
+    def _build_period(
+        self, base_motif: Motif, harmonic_plan: List[HarmonicFunction]
+    ) -> Period:
+        """
+        Construye un Period completo con estructura jerárquica.
+
+        Args:
+            base_motif: Motivo generador de todo el período
+            harmonic_plan: Plan armónico completo
+
+        Returns:
+            Period con antecedente y consecuente
+        """
+        midpoint = self.num_measures // 2
+
+        # Construir antecedente (primera mitad, termina en V)
+        antecedent_harmonics = harmonic_plan[:midpoint]
+        antecedent = self._build_semiphrase(
+            base_motif,
+            antecedent_harmonics,
+            measure_start=0,
+            function="antecedent",
+            is_first_semiphrase=True,
+        )
+
+        # Construir consecuente (segunda mitad, termina en I)
+        consequent_harmonics = harmonic_plan[midpoint:]
+        consequent = self._build_semiphrase(
+            base_motif,
+            consequent_harmonics,
+            measure_start=midpoint,
+            function="consequent",
+            is_first_semiphrase=False,
+        )
+
+        return Period(
+            antecedent=antecedent,
+            consequent=consequent,
+            total_measures=self.num_measures,
+            base_motif=base_motif,
+            harmonic_plan=harmonic_plan,
+        )
+
+    def _render_period_to_staff(self, period: Period) -> abjad.Staff:
+        """
+        Renderiza un Period a un Abjad Staff.
+
+        Args:
+            period: Estructura Period a renderizar
+
+        Returns:
+            Staff de Abjad con la melodía generada
         """
         staff = abjad.Staff(name="Melodia_Hierarchical")
 
-        harmonic_progression = self.harmony_manager.create_harmonic_progression(
-            self.num_measures
-        )
-        base_motif = self.motif_generator.create_base_motif(
-            harmonic_progression[0].degree
-        )
+        # Obtener todos los motivos en orden
+        all_motifs = period.get_all_motifs()
 
-        num_phrases = (self.num_measures + 1) // 2
+        # Renderizar cada motivo como un compás
+        for measure_idx, motif in enumerate(all_motifs):
+            if measure_idx >= self.num_measures:
+                break
 
-        for phrase_idx in range(num_phrases):
-            measure_start = phrase_idx * 2
-            measure_end = min(measure_start + 2, self.num_measures)
+            harmonic_func = period.harmonic_plan[measure_idx]
+            measure_container = self._create_measure_from_motif(
+                motif, harmonic_func, measure_idx
+            )
 
-            if phrase_idx == 0:
-                variation_types = ["auto", "auto"]
-            elif measure_end == self.num_measures // 2:
-                variation_types = ["auto", "strict"]
-            elif phrase_idx == num_phrases - 1:
-                variation_types = ["strict", "strict"]
-            else:
-                variation_types = ["auto", "auto"]
+            staff.append(measure_container)
 
-            for local_measure_idx in range(measure_end - measure_start):
-                global_measure_idx = measure_start + local_measure_idx
-
-                if global_measure_idx >= self.num_measures:
-                    break
-
-                if local_measure_idx == 0:
-                    if phrase_idx == 0:
-                        current_motif = base_motif
-                    else:
-                        current_motif = self.motif_generator.apply_motif_variation(
-                            base_motif, variation_type=variation_types[0]
-                        )
+            # Añadir barras de compás
+            last_leaf = abjad.get.leaf(measure_container, -1)
+            if last_leaf:
+                if measure_idx < self.num_measures - 1:
+                    abjad.attach(abjad.BarLine("|"), last_leaf)
                 else:
-                    current_motif = self.motif_generator.apply_motif_variation(
-                        base_motif, variation_type=variation_types[1]
-                    )
-
-                harmonic_func = harmonic_progression[global_measure_idx]
-                measure_container = self._create_measure_from_motif(
-                    current_motif, harmonic_func, global_measure_idx
-                )
-
-                staff.append(measure_container)
-
-                if global_measure_idx < self.num_measures - 1:
-                    last_leaf = abjad.get.leaf(measure_container, -1)
-                    if last_leaf:
-                        abjad.attach(abjad.BarLine("|"), last_leaf)
-                else:
-                    last_leaf = abjad.get.leaf(measure_container, -1)
-                    if last_leaf:
-                        abjad.attach(abjad.BarLine("|."), last_leaf)
+                    abjad.attach(abjad.BarLine("|."), last_leaf)
 
         self._add_staff_indications(staff)
 

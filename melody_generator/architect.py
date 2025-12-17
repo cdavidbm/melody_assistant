@@ -7,7 +7,7 @@ from typing import Tuple, Optional, List
 
 import abjad
 
-from .models import ImpulseType, MelodicContour
+from .models import ImpulseType, MelodicContour, Period
 from .scales import ScaleManager
 from .harmony import HarmonyManager
 from .rhythm import RhythmGenerator
@@ -153,14 +153,24 @@ class MelodicArchitect:
         """
         return self.period_generator.generate_period()
 
-    def generate_period_hierarchical(self) -> abjad.Staff:
+    def generate_period_hierarchical(
+        self, return_structure: bool = False
+    ) -> abjad.Staff | Tuple[abjad.Staff, Period]:
         """
         Genera un período musical con jerarquía formal verdadera.
 
+        Construye una estructura Period completa (con Phrase y Semiphrase)
+        antes de renderizar a Abjad, permitiendo análisis estructural.
+
+        Args:
+            return_structure: Si True, retorna también la estructura Period
+
         Returns:
-            abjad.Staff con la melodía generada jerárquicamente
+            abjad.Staff con la melodía, o tupla (Staff, Period) si return_structure=True
         """
-        return self.period_generator.generate_period_hierarchical()
+        return self.period_generator.generate_period_hierarchical(
+            return_structure=return_structure
+        )
 
     def generate_and_display(
         self,

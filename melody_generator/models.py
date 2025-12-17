@@ -72,25 +72,70 @@ class HarmonicFunction:
 
 @dataclass
 class Phrase:
-    """Frase musical: motivo + respuesta/variación (típicamente 2 compases)."""
-    motif: Motif  # Motivo base
-    variation: Motif  # Variación/respuesta del motivo
+    """
+    Frase musical: motivo + respuesta/variación (típicamente 2 compases).
+
+    La frase es la unidad mínima de sentido musical completo.
+    Contiene dos motivos: el original y su variación/respuesta.
+    """
+    motif: Motif  # Motivo base (primer compás)
+    variation: Motif  # Variación/respuesta del motivo (segundo compás)
     harmonic_progression: List[HarmonicFunction]  # Progresión armónica de la frase
     measure_range: Tuple[int, int]  # (inicio, fin) en índices de compases
+    variation_type: str = "auto"  # Tipo de variación aplicada
+
+    def get_motifs(self) -> List[Motif]:
+        """Retorna los motivos de la frase en orden."""
+        return [self.motif, self.variation]
 
 
 @dataclass
 class Semiphrase:
-    """Semifrase: agrupación de frases (típicamente 4 compases)."""
+    """
+    Semifrase: agrupación de frases (típicamente 4 compases).
+
+    En el período clásico, la semifrase representa el antecedente o consecuente.
+    Contiene típicamente 2 frases (4 compases).
+    """
     phrases: List[Phrase]  # Lista de frases que componen la semifrase
-    function: str  # "presentation", "development", "cadential"
+    function: str  # "antecedent" o "consequent"
+    cadence_type: str  # "half" (semicadencia) o "authentic" (cadencia auténtica)
     measure_range: Tuple[int, int]  # (inicio, fin) en índices de compases
+
+    def get_all_motifs(self) -> List[Motif]:
+        """Retorna todos los motivos de la semifrase en orden."""
+        motifs = []
+        for phrase in self.phrases:
+            motifs.extend(phrase.get_motifs())
+        return motifs
 
 
 @dataclass
 class Period:
-    """Período: antecedente + consecuente (típicamente 8 compases)."""
-    antecedent: Semiphrase  # Semifrase antecedente (pregunta)
-    consequent: Semiphrase  # Semifrase consecuente (respuesta)
+    """
+    Período: antecedente + consecuente (típicamente 8 compases).
+
+    El período es la estructura formal completa que implementa el principio
+    de pregunta-respuesta en la música clásica.
+    """
+    antecedent: Semiphrase  # Semifrase antecedente (pregunta, termina en V)
+    consequent: Semiphrase  # Semifrase consecuente (respuesta, termina en I)
     total_measures: int  # Número total de compases
     base_motif: Motif  # Motivo generador de todo el período
+    harmonic_plan: List[HarmonicFunction]  # Plan armónico completo
+
+    def get_all_motifs(self) -> List[Motif]:
+        """Retorna todos los motivos del período en orden."""
+        return self.antecedent.get_all_motifs() + self.consequent.get_all_motifs()
+
+    def get_structure_summary(self) -> str:
+        """Retorna un resumen de la estructura jerárquica."""
+        return (
+            f"Period ({self.total_measures} measures):\n"
+            f"  Antecedent ({self.antecedent.cadence_type} cadence): "
+            f"measures {self.antecedent.measure_range[0]+1}-{self.antecedent.measure_range[1]}\n"
+            f"    Phrases: {len(self.antecedent.phrases)}\n"
+            f"  Consequent ({self.consequent.cadence_type} cadence): "
+            f"measures {self.consequent.measure_range[0]+1}-{self.consequent.measure_range[1]}\n"
+            f"    Phrases: {len(self.consequent.phrases)}"
+        )
