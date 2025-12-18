@@ -19,6 +19,15 @@ from .models import (
     Period,
 )
 from .architect import MelodicArchitect
+from .validation import (
+    MusicValidator,
+    ValidationReport,
+    KeyValidation,
+    MeterValidation,
+    RangeValidation,
+    ModeValidation,
+    AutoCorrector,
+)
 
 __version__ = "2.0.0"
 __all__ = [
@@ -33,4 +42,11 @@ __all__ = [
     "Phrase",
     "Semiphrase",
     "Period",
+    "MusicValidator",
+    "ValidationReport",
+    "KeyValidation",
+    "MeterValidation",
+    "RangeValidation",
+    "ModeValidation",
+    "AutoCorrector",
 ]

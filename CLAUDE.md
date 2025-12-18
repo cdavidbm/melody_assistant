@@ -201,6 +201,145 @@ python scripts/train_markov.py --composer mozart --type both --max-works 5
 - Automatic fallback if models missing (warning printed, generation continues)
 - Models passed to `PitchSelector` and `RhythmGenerator` at initialization
 
+## Validation & Correction System (New Feature)
+
+The system now includes **automatic validation and iterative correction** to ensure generated melodies actually fulfill their musical specifications.
+
+### Key Characteristics
+
+- **Always Active**: All melodies are automatically validated
+- **Iterative Correction**: Identifies specific problems and fixes them without regenerating from scratch
+- **User Control**: User decides whether to accept, retry with corrections, or cancel
+- **No Limits**: Infinite retry attempts until user is satisfied
+
+### How It Works
+
+1. **Generation**: System generates melody with current parameters
+2. **Validation**: music21 analyzes the melody for:
+   - **Key/Tonality**: Krumhansl-Schmuckler algorithm + diatonic percentage
+   - **Meter**: Measure durations match time signature
+   - **Range**: Melodic ambitus is singable (<= 24 semitones)
+   - **Mode**: Modal characteristics are present
+3. **Report**: Beautiful ASCII art report shows all validation results
+4. **Correction**: If invalid, AutoCorrector suggests specific parameter adjustments
+5. **User Choice**:
+   - Option 1: Apply corrections and retry (modifies parameters, regenerates)
+   - Option 2: Accept current melody (even if invalid)
+   - Option 3: Cancel and exit
+
+### CLI Usage
+
+When running `python main.py`, new validation prompts appear:
+
+```
+=== VALIDACIÓN MUSICAL ===
+
+El sistema validará automáticamente que la melodía generada
+cumpla con las especificaciones de tonalidad, métrica y rango.
+
+Nivel de exigencia en validación:
+1. Estricto (80-90% de precisión)
+2. Moderado (60-70% de precisión) [Recomendado]
+3. Permisivo (40-50% de precisión)
+Seleccione nivel [2]: 2
+```
+
+After generation, validation report appears:
+
+```
+╔════════════════════════════════════════════════════════════════════╗
+║                    REPORTE DE VALIDACIÓN                           ║
+╚════════════════════════════════════════════════════════════════════╝
+
+Estado General: ⚠️ REQUIERE ATENCIÓN
+Puntuación:     72.3% (calidad musical)
+
+┌─ TONALIDAD ───────────────────────────────────────────────────────┐
+│ Esperada:         C major                                          │
+│ Detectada:        C major                                          │
+│ Correlación:      85.2% (certeza del análisis)                    │
+│ Notas diatónicas: 89.3%                                           │
+│ Estado:           ✓ COINCIDE                                       │
+└────────────────────────────────────────────────────────────────────┘
+
+🔧 Correcciones sugeridas:
+  • Reforzar cadencias para establecer tonalidad
+
+Opciones:
+  1. Aplicar correcciones e intentar de nuevo
+  2. Aceptar melodía actual (aunque no sea válida)
+  3. Cancelar y salir
+  
+Seleccione opción [1]:
+```
+
+### Programmatic Usage
+
+```python
+from melody_generator import MelodicArchitect
+from melody_generator.validation import MusicValidator, AutoCorrector
+
+# Generate melody
+architect = MelodicArchitect(key_name="C", mode="major", num_measures=8)
+staff = architect.generate_period()
+
+# Validate
+validator = MusicValidator(
+    staff=staff,
+    lilypond_formatter=architect.lilypond_formatter,
+    expected_key="C",
+    expected_mode="major",
+    expected_meter=(4, 4),
+    tolerance=0.65  # 65% threshold
+)
+
+report = validator.validate_all()
+print(report.format_detailed_report())
+
+# If invalid, get corrections
+if not report.is_valid:
+    corrector = AutoCorrector(report)
+    
+    # Get suggested parameter adjustments
+    architect_params = {
+        "key_name": "C",
+        "mode": "major",
+        "rhythmic_complexity": 2,
+        "max_interval": 6,
+        "infraction_rate": 0.1,
+    }
+    
+    # Apply corrections
+    corrected_params = corrector.apply_to_architect_params(architect_params)
+    
+    # Regenerate with corrected parameters
+    architect = MelodicArchitect(**corrected_params)
+    staff = architect.generate_period()
+```
+
+### Correction Strategies
+
+The `AutoCorrector` applies these corrections based on detected problems:
+
+| Problem | Correction |
+|---------|------------|
+| **Key mismatch** | Reduce `infraction_rate` (less chromatic notes) |
+| **Low diatonic %** | Reduce `infraction_rate` by 50% |
+| **Meter errors** | Reduce `rhythmic_complexity` by 1 level |
+| **Range too wide** | Reduce `max_interval` to 4 semitones |
+| **Range too narrow** | (Currently no automatic correction) |
+
+### Implementation Files
+
+- `melody_generator/validation.py` (~850 lines)
+  - `MusicValidator`: Main validator class
+  - `ValidationReport`: Detailed report with ASCII formatting
+  - `AutoCorrector`: Parameter adjustment engine
+- `melody_generator/cli.py` (modified)
+  - Interactive validation loop
+  - User choice prompts
+- `output/` directory: Auto-saved melodies (timestamped)
+
 ### Extension Points
 
 - **New modes**: Add to `MODE_CONFIG` dict in `scales.py`
@@ -209,3 +348,5 @@ python scripts/train_markov.py --composer mozart --type both --max-works 5
 - **New generation method**: Add method to `PeriodGenerator` in `generation.py`
 - **New Markov composers**: Train models with `scripts/train_markov.py` and place in `models/`
 - **Custom corpus**: Modify `MelodicMarkovModel.train_from_corpus()` to accept custom MIDI/MusicXML files
+- **New validation metrics**: Add methods to `MusicValidator` in `validation.py`
+- **New correction strategies**: Extend `AutoCorrector._correct_*_issues()` methods

@@ -3,9 +3,13 @@ Interfaz de línea de comandos para el generador de melodías.
 """
 
 import re
+from datetime import datetime
+from pathlib import Path
 
 from .models import ImpulseType
 from .architect import MelodicArchitect
+from .validation import MusicValidator, AutoCorrector
+from .lilypond import LilyPondFormatter
 
 
 # Mapeo de selección de modo
@@ -228,6 +232,25 @@ def main():
     generation_method_input = input("Seleccione método [1]: ").strip() or "1"
     use_hierarchical = generation_method_input == "2"
 
+    # Nivel de validación
+    print("\n=== VALIDACIÓN MUSICAL ===")
+    print()
+    print("El sistema validará automáticamente que la melodía generada")
+    print("cumpla con las especificaciones de tonalidad, métrica y rango.")
+    print()
+    print("Nivel de exigencia en validación:")
+    print("1. Estricto (80-90% de precisión)")
+    print("2. Moderado (60-70% de precisión) [Recomendado]")
+    print("3. Permisivo (40-50% de precisión)")
+
+    tolerance_choice = input("Seleccione nivel [2]: ").strip() or "2"
+    tolerance_map = {
+        "1": 0.85,  # Estricto
+        "2": 0.65,  # Moderado
+        "3": 0.45,  # Permisivo
+    }
+    tolerance = tolerance_map.get(tolerance_choice, 0.65)
+
     # Título y compositor
     print("\n=== INFORMACIÓN DE LA PARTITURA ===")
     title = input("Título [Melodía Generada]: ").strip() or "Melodía Generada"
@@ -236,7 +259,7 @@ def main():
     )
 
     print("\n" + "=" * 70)
-    print("Generando melodía...")
+    print("Generando melodía con validación automática...")
     print("=" * 70)
     print()
 
@@ -266,30 +289,175 @@ def main():
             markov_order=markov_order,
         )
 
-        if use_hierarchical:
-            print("Usando método JERÁRQUICO (Motivo → Frase → Semifrase → Período)")
-            staff = architect.generate_period_hierarchical()
-            lilypond_code = architect.format_as_lilypond(
-                staff, title=title, composer=composer
-            )
-        else:
-            print("Usando método TRADICIONAL (cohesión rítmica)")
-            lilypond_code = architect.generate_and_display(
-                title=title, composer=composer
+        # Validation loop (sin límite de intentos)
+        staff = None
+        lilypond_code = None
+        validation_report = None
+        attempt = 0
+
+        # Guardar parámetros originales
+        architect_params = {
+            "key_name": key_name,
+            "mode": mode,
+            "meter_tuple": meter_tuple,
+            "subdivisions": subdivisions,
+            "num_measures": num_measures,
+            "impulse_type": impulse_type,
+            "infraction_rate": 0.1,
+            "rhythmic_complexity": complexity,
+            "use_rests": use_rests,
+            "rest_probability": 0.15,
+            "use_motivic_variations": True,
+            "variation_probability": 0.4,
+            "climax_position": climax_pos,
+            "climax_intensity": 1.5,
+            "max_interval": 6,
+            "use_tenoris": use_tenoris,
+            "tenoris_probability": 0.2,
+            "variation_freedom": variation_freedom,
+            "use_markov": use_markov,
+            "markov_composer": markov_composer,
+            "markov_weight": markov_weight,
+            "markov_order": markov_order,
+        }
+
+        while True:
+            attempt += 1
+            print(f"\n{'─' * 70}")
+            print(f"Intento {attempt}")
+            print(f"{'─' * 70}\n")
+
+            if use_hierarchical:
+                print("Generando con método JERÁRQUICO...")
+                result = architect.generate_period_hierarchical()
+                # Handle tuple return
+                if isinstance(result, tuple):
+                    staff = result[0]
+                else:
+                    staff = result
+            else:
+                print("Generando con método TRADICIONAL...")
+                staff = architect.generate_period()
+
+            # Validate the generated staff
+            print("Validando melodía generada...\n")
+
+            # Get formatter from architect (it already has one)
+            validator = MusicValidator(
+                staff=staff,
+                lilypond_formatter=architect.lilypond_formatter,
+                expected_key=key_name,
+                expected_mode=mode,
+                expected_meter=meter_tuple,
+                tolerance=tolerance,
             )
 
+            validation_report = validator.validate_all()
+
+            # Show detailed report
+            print(validation_report.format_detailed_report())
+            print()
+
+            # Check if valid
+            if validation_report.is_valid:
+                print(f"✓ Validación exitosa en intento {attempt}")
+                break
+            else:
+                print(
+                    f"⚠️  Validación no superada (puntuación: {validation_report.overall_score:.1%})"
+                )
+
+                # Show auto-correction suggestions
+                auto_corrector = AutoCorrector(validation_report)
+                print(f"\n{auto_corrector.get_correction_summary()}")
+
+                # Preguntar al usuario qué hacer
+                print(f"\n{'─' * 70}")
+                print("Opciones:")
+                print("  1. Aplicar correcciones e intentar de nuevo")
+                print("  2. Aceptar melodía actual (aunque no sea válida)")
+                print("  3. Cancelar y salir")
+
+                choice = input("\nSeleccione opción [1]: ").strip() or "1"
+
+                if choice == "1":
+                    # Aplicar correcciones a los parámetros
+                    print("\n🔧 Aplicando correcciones automáticas...")
+                    architect_params = auto_corrector.apply_to_architect_params(
+                        architect_params
+                    )
+
+                    # Recrear architect con parámetros corregidos
+                    architect = MelodicArchitect(**architect_params)
+
+                    # Mostrar qué se corrigió
+                    if architect_params["rhythmic_complexity"] < complexity:
+                        print(
+                            f"  → Complejidad rítmica reducida: {complexity} → {architect_params['rhythmic_complexity']}"
+                        )
+                    if architect_params["max_interval"] < 6:
+                        print(
+                            f"  → Intervalo máximo reducido: 6 → {architect_params['max_interval']}"
+                        )
+                    if architect_params["infraction_rate"] < 0.1:
+                        print(
+                            f"  → Tasa de infracciones reducida: 0.1 → {architect_params['infraction_rate']:.2f}"
+                        )
+
+                    print("\n🔄 Regenerando con parámetros corregidos...")
+                    continue
+
+                elif choice == "2":
+                    print("\n⚠️  Aceptando melodía no validada...")
+                    break
+
+                else:  # choice == "3" o cualquier otra cosa
+                    print("\n❌ Generación cancelada.")
+                    return
+
+        # Generate LilyPond code
+        if staff is None:
+            print("\n❌ Error: No se pudo generar la melodía.")
+            return
+
+        lilypond_code = architect.format_as_lilypond(
+            staff, title=title, composer=composer
+        )
+
+        print("\n" + "=" * 70)
+        print("CÓDIGO LILYPOND")
+        print("=" * 70)
+        print()
         print(lilypond_code)
         print()
         print("=" * 70)
         print("¡Melodía generada exitosamente!")
         print("=" * 70)
 
-        # Opción de guardar en archivo
+        # Auto-save to output/ directory
+        output_dir = Path("output")
+        output_dir.mkdir(exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")
+        auto_filename = f"melody_{key_name}_{mode}_{timestamp}.ly"
+        auto_filepath = output_dir / auto_filename
+
+        try:
+            with open(auto_filepath, "w", encoding="utf-8") as f:
+                f.write(lilypond_code)
+            print(f"\n✓ Guardado automáticamente: {auto_filepath}")
+        except Exception as e:
+            print(f"\n⚠️  No se pudo guardar automáticamente: {e}")
+
+        # Opción de guardar en ubicación personalizada
         save_option = (
-            input("\n¿Guardar en archivo .ly? (s/n) [n]: ").strip().lower() or "n"
+            input("\n¿Guardar también en ubicación personalizada? (s/n) [n]: ")
+            .strip()
+            .lower()
+            or "n"
         )
         if save_option == "s":
-            safe_title = re.sub(r"[^\w\s-]", "", title).strip().replace(" ", "_")
             default_filename = f"{safe_title}.ly" if safe_title else "melodia.ly"
             filename = (
                 input(f"Nombre del archivo [{default_filename}]: ").strip()
@@ -308,8 +476,9 @@ def main():
             except Exception as e:
                 print(f"✗ Error al guardar archivo: {e}")
         else:
-            print("Copie el código LilyPond anterior y péguelo en Frescobaldi")
-            print("o guárdelo manualmente en un archivo .ly para compilarlo.")
+            print("\nPuede compilar el archivo guardado con:")
+            print(f"  lilypond {auto_filepath}")
+            print(f"  O abrirlo en Frescobaldi para edición visual")
 
         print("=" * 70)
 

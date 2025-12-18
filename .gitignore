@@ -29,6 +29,9 @@ env/
 *.ps
 *.png
 
+# Generated scores (user output)
+output/
+
 # Claude Code
 .claude/
 
