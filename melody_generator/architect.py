@@ -4,6 +4,8 @@ Orquesta todos los módulos para la generación de melodías.
 """
 
 from typing import Tuple, Optional, List
+import os
+from pathlib import Path
 
 import abjad
 
@@ -47,6 +49,10 @@ class MelodicArchitect:
         use_tenoris: bool = False,
         tenoris_probability: float = 0.2,
         variation_freedom: int = 2,
+        use_markov: bool = False,
+        markov_composer: str = "bach",
+        markov_weight: float = 0.5,
+        markov_order: int = 2,
     ):
         """
         Inicializa el arquitecto melódico.
@@ -70,6 +76,10 @@ class MelodicArchitect:
             use_tenoris: Usar quinta como nota sostenedora
             tenoris_probability: Probabilidad de tenoris
             variation_freedom: Libertad de variación (1=estricta, 2=moderada, 3=libre)
+            use_markov: Activar cadenas de Markov (default: False)
+            markov_composer: Compositor para Markov ("bach", "mozart", "beethoven", "combined")
+            markov_weight: Peso de influencia del Markov (0.0-1.0, default: 0.5)
+            markov_order: Orden de la cadena de Markov (1-3, default: 2)
         """
         self.key_name = key_name
         self.mode = mode
@@ -84,6 +94,64 @@ class MelodicArchitect:
             climax_emphasis=climax_intensity,
         )
 
+        # Inicializar modelos de Markov si están habilitados
+        melody_markov = None
+        rhythm_markov = None
+
+        if use_markov:
+            from .markov import MelodicMarkovModel, RhythmicMarkovModel
+
+            # Determinar ruta base de modelos
+            base_dir = Path(__file__).parent.parent
+
+            # Cargar modelo melódico pre-entrenado
+            melody_model_path = (
+                base_dir
+                / "models"
+                / "melody_markov"
+                / f"{markov_composer}_intervals.json"
+            )
+
+            if melody_model_path.exists():
+                try:
+                    melody_markov = MelodicMarkovModel(
+                        order=markov_order, composer=markov_composer
+                    )
+                    melody_markov.chain.load(str(melody_model_path))
+                except Exception as e:
+                    print(
+                        f"⚠️  No se pudo cargar modelo melódico de {markov_composer}: {e}"
+                    )
+                    melody_markov = None
+            else:
+                print(
+                    f"⚠️  Modelo melódico de {markov_composer} no encontrado en {melody_model_path}"
+                )
+
+            # Cargar modelo rítmico pre-entrenado
+            rhythm_model_path = (
+                base_dir
+                / "models"
+                / "rhythm_markov"
+                / f"{markov_composer}_rhythms.json"
+            )
+
+            if rhythm_model_path.exists():
+                try:
+                    rhythm_markov = RhythmicMarkovModel(
+                        order=markov_order, composer=markov_composer
+                    )
+                    rhythm_markov.chain.load(str(rhythm_model_path))
+                except Exception as e:
+                    print(
+                        f"⚠️  No se pudo cargar modelo rítmico de {markov_composer}: {e}"
+                    )
+                    rhythm_markov = None
+            else:
+                print(
+                    f"⚠️  Modelo rítmico de {markov_composer} no encontrado en {rhythm_model_path}"
+                )
+
         # Inicializar componentes
         self.scale_manager = ScaleManager(key_name, mode)
 
@@ -92,6 +160,8 @@ class MelodicArchitect:
             subdivisions=self.subdivisions,
             rhythmic_complexity=rhythmic_complexity,
             num_measures=num_measures,
+            markov_model=rhythm_markov,
+            markov_weight=markov_weight,
         )
 
         self.harmony_manager = HarmonyManager(
@@ -113,6 +183,8 @@ class MelodicArchitect:
             rest_probability=rest_probability,
             impulse_type=impulse_type,
             meter_tuple=meter_tuple,
+            markov_model=melody_markov,
+            markov_weight=markov_weight,
         )
 
         climax_measure = int(num_measures * climax_position)
@@ -216,4 +288,6 @@ class MelodicArchitect:
         Returns:
             String con código LilyPond
         """
-        return self.lilypond_formatter.format_output(staff, title=title, composer=composer)
+        return self.lilypond_formatter.format_output(
+            staff, title=title, composer=composer
+        )

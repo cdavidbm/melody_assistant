@@ -4,9 +4,12 @@ Implementa ritmo anclado a pulsos según la jerarquía métrica.
 """
 
 import random
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, TYPE_CHECKING
 
 from .models import RhythmicPattern
+
+if TYPE_CHECKING:
+    from .markov import RhythmicMarkovModel
 
 
 class RhythmGenerator:
@@ -20,6 +23,8 @@ class RhythmGenerator:
         subdivisions: List[int],
         rhythmic_complexity: int,
         num_measures: int,
+        markov_model: Optional["RhythmicMarkovModel"] = None,
+        markov_weight: float = 0.5,
     ):
         """
         Inicializa el generador de ritmo.
@@ -29,6 +34,8 @@ class RhythmGenerator:
             subdivisions: Subdivisiones para métricas amalgama
             rhythmic_complexity: Nivel de complejidad (1-5)
             num_measures: Número total de compases
+            markov_model: Modelo de Markov opcional para sugerencias rítmicas
+            markov_weight: Peso de influencia del modelo Markov (0.0-1.0)
         """
         self.meter_tuple = meter_tuple
         self.subdivisions = subdivisions
@@ -36,6 +43,8 @@ class RhythmGenerator:
         self.num_measures = num_measures
         self.strong_beats = self._calculate_strong_beats()
         self.base_rhythmic_motif: Optional[RhythmicPattern] = None
+        self.markov_model = markov_model
+        self.markov_weight = markov_weight
 
     def _calculate_strong_beats(self) -> List[int]:
         """Calcula los pulsos fuertes según la subdivisión de la métrica."""
@@ -84,6 +93,24 @@ class RhythmGenerator:
         self, is_strong: bool, beat_index: int
     ) -> List[Tuple[int, int]]:
         """Subdivide un pulso de negra (4 sixteenths)."""
+
+        # Intentar usar Markov si está disponible y es tiempo débil
+        if self.markov_model and not is_strong and random.random() < self.markov_weight:
+            fallback_durations = [(1, 4), (1, 8), (1, 8)]
+            suggested = self.markov_model.suggest_duration(
+                weight=self.markov_weight, fallback_durations=fallback_durations
+            )
+
+            # Actualizar historial
+            self.markov_model.update_history(suggested)
+
+            # Validar que la duración encaje en el pulso (debe ser ≤ negra)
+            # Convertir a quarterLength para comparar
+            ql = suggested[0] / suggested[1] * 4  # (num/denom) * 4 = quarterLength
+            if ql <= 1.0:  # Si cabe en una negra
+                return [suggested]
+            # Si no cabe, continuar con lógica tradicional
+
         if self.rhythmic_complexity == 1:
             if is_strong or random.random() < 0.7:
                 return [(1, 4)]

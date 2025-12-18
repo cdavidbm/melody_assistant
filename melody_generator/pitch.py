@@ -4,7 +4,7 @@ Implementa reglas teóricas de movimiento melódico.
 """
 
 import random
-from typing import Tuple, Optional, List
+from typing import Tuple, Optional, List, TYPE_CHECKING
 
 from music21 import pitch, interval
 
@@ -16,6 +16,9 @@ from .models import (
 )
 from .scales import ScaleManager
 from .harmony import HarmonyManager
+
+if TYPE_CHECKING:
+    from .markov import MelodicMarkovModel
 
 
 class PitchSelector:
@@ -37,9 +40,15 @@ class PitchSelector:
         rest_probability: float = 0.15,
         impulse_type: ImpulseType = ImpulseType.TETIC,
         meter_tuple: Tuple[int, int] = (4, 4),
+        markov_model: Optional["MelodicMarkovModel"] = None,
+        markov_weight: float = 0.5,
     ):
         """
         Inicializa el selector de tonos.
+
+        Args:
+            markov_model: Modelo de Markov opcional para sugerencias melódicas
+            markov_weight: Peso de influencia del modelo Markov (0.0-1.0)
         """
         self.scale_manager = scale_manager
         self.harmony_manager = harmony_manager
@@ -53,6 +62,8 @@ class PitchSelector:
         self.rest_probability = rest_probability
         self.impulse_type = impulse_type
         self.meter_tuple = meter_tuple
+        self.markov_model = markov_model
+        self.markov_weight = markov_weight
 
         # Estado interno
         self.current_octave = 4
@@ -129,12 +140,34 @@ class PitchSelector:
             degree = random.choice(chord_tones)
             function = NoteFunction.STRUCTURAL
         else:
+            # NOTAS ORNAMENTALES: aquí entra Markov
             if self.last_pitch:
                 last_degree = self.scale_manager.pitch_to_degree(self.last_pitch)
-                if random.random() < 0.5:
-                    degree = last_degree + 1 if last_degree < 7 else 1
+
+                # Usar Markov si está disponible
+                if self.markov_model:
+                    # Obtener sugerencia de intervalo desde Markov
+                    fallback_intervals = [
+                        -1,
+                        1,
+                        2,
+                        -2,
+                    ]  # Grados conjuntos principalmente
+                    suggested_interval = self.markov_model.suggest_interval(
+                        weight=self.markov_weight, fallback_intervals=fallback_intervals
+                    )
+
+                    # Convertir intervalo a grado de escala
+                    last_p = pitch.Pitch(self.last_pitch)
+                    new_p = last_p.transpose(suggested_interval)
+                    degree = self.scale_manager.pitch_to_degree(new_p.nameWithOctave)
                 else:
-                    degree = last_degree - 1 if last_degree > 1 else 7
+                    # Lógica tradicional (sin Markov)
+                    if random.random() < 0.5:
+                        degree = last_degree + 1 if last_degree < 7 else 1
+                    else:
+                        degree = last_degree - 1 if last_degree > 1 else 7
+
                 function = NoteFunction.PASSING
             else:
                 degree = 2
@@ -146,6 +179,13 @@ class PitchSelector:
             note_pitch = self._adjust_octave_for_contour(
                 note_pitch, measure_index, is_structural=should_be_structural
             )
+
+        # Actualizar historial de Markov con el intervalo real usado
+        if self.markov_model and self.last_pitch:
+            last_p = pitch.Pitch(self.last_pitch)
+            current_p = pitch.Pitch(note_pitch)
+            actual_interval = int(current_p.ps - last_p.ps)
+            self.markov_model.update_history(actual_interval)
 
         self.last_pitch = note_pitch
         return note_pitch, function

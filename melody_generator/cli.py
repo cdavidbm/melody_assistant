@@ -78,9 +78,7 @@ def parse_subdivisions(numerator: int) -> list:
     elif numerator == 7:
         subdiv_input = input("  Ej: 2+2+3 o 3+2+2 [2+2+3]: ").strip() or "2+2+3"
     else:
-        subdiv_input = input(
-            f"  Separados por + (deben sumar {numerator}): "
-        ).strip()
+        subdiv_input = input(f"  Separados por + (deben sumar {numerator}): ").strip()
 
     return [int(x) for x in subdiv_input.split("+")]
 
@@ -174,6 +172,55 @@ def main():
         else 2
     )
 
+    # Cadenas de Markov
+    print("\n=== CADENAS DE MARKOV (Aprendizaje de Compositores Clásicos) ===")
+    print()
+    print("Las cadenas de Markov permiten que el generador aprenda patrones")
+    print("melódicos y rítmicos de compositores clásicos del corpus de music21.")
+    print()
+
+    use_markov_input = (
+        input("¿Usar cadenas de Markov? (s/n) [n]: ").strip().lower() or "n"
+    )
+    use_markov = use_markov_input == "s"
+
+    markov_composer = "bach"
+    markov_weight = 0.5
+    markov_order = 2
+
+    if use_markov:
+        print("\nCompositor de referencia:")
+        print("1. Bach (363 obras - estilo contrapuntístico)")
+        print("2. Mozart (11 obras - estilo clásico elegante)")
+        print("3. Beethoven (23 obras - estilo dramático)")
+        print("4. Combinado (mezcla de los tres estilos)")
+
+        composer_choice = input("Seleccione compositor [1]: ").strip() or "1"
+        composer_map = {"1": "bach", "2": "mozart", "3": "beethoven", "4": "combined"}
+        markov_composer = composer_map.get(composer_choice, "bach")
+
+        print("\nPeso de Markov (influencia en la generación):")
+        print("  0.0 = No influye (solo reglas teóricas)")
+        print("  0.5 = Balance equilibrado (recomendado)")
+        print("  1.0 = Máxima influencia de Markov")
+
+        weight_input = input("Peso de Markov (0.0-1.0) [0.5]: ").strip()
+        if weight_input:
+            try:
+                markov_weight = float(weight_input)
+                markov_weight = max(0.0, min(1.0, markov_weight))
+            except ValueError:
+                markov_weight = 0.5
+
+        print("\nOrden de la cadena (contexto previo):")
+        print("  1 = Solo intervalo/ritmo previo (menos contexto)")
+        print("  2 = Dos pasos previos (recomendado)")
+        print("  3 = Tres pasos previos (máximo contexto)")
+
+        order_input = input("Orden [2]: ").strip()
+        if order_input in ["1", "2", "3"]:
+            markov_order = int(order_input)
+
     # Tipo de generación
     print("\nMétodo de generación:")
     print("1. Tradicional (sistema actual, cohesión rítmica)")
@@ -213,6 +260,10 @@ def main():
             use_tenoris=use_tenoris,
             tenoris_probability=0.2,
             variation_freedom=variation_freedom,
+            use_markov=use_markov,
+            markov_composer=markov_composer,
+            markov_weight=markov_weight,
+            markov_order=markov_order,
         )
 
         if use_hierarchical:
