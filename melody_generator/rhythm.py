@@ -207,11 +207,11 @@ class RhythmGenerator:
         if measure_index == 0:
             return self.base_rhythmic_motif
 
-        # Segundo compás: repetir motivo exacto
+        # Segundo compás: repetir motivo exacto (cohesión)
         if measure_index == 1:
             return self.base_rhythmic_motif
 
-        # Cadencias: usar motivo original
+        # Cadencias: usar motivo original para coherencia
         midpoint = self.num_measures // 2
         is_antecedent_end = measure_index == midpoint - 1
         is_period_end = measure_index == self.num_measures - 1
@@ -219,11 +219,88 @@ class RhythmGenerator:
         if is_antecedent_end or is_period_end:
             return self.base_rhythmic_motif
 
-        # Otros compases: aplicar variaciones sutiles
+        # Otros compases: aplicar variaciones
+        # Si Markov está activo, generar nuevo patrón con influencia Markov
+        if self.markov_model and random.random() < self.markov_weight:
+            return self._create_markov_influenced_pattern()
+
+        # Sin Markov: aplicar variaciones tradicionales
         if random.random() < 0.3:
             return self._apply_rhythmic_variation(self.base_rhythmic_motif)
         else:
             return self.base_rhythmic_motif
+
+    def _create_markov_influenced_pattern(self) -> RhythmicPattern:
+        """
+        Crea un nuevo patrón rítmico fuertemente influenciado por Markov.
+
+        Genera duraciones usando sugerencias del modelo Markov,
+        manteniendo la integridad métrica.
+        """
+        durations = []
+        sixteenths_per_beat = 16 // self.meter_tuple[1]
+        total_sixteenths_needed = self.meter_tuple[0] * sixteenths_per_beat
+
+        current_sixteenths = 0
+
+        while current_sixteenths < total_sixteenths_needed:
+            remaining = total_sixteenths_needed - current_sixteenths
+            beat_index = current_sixteenths // sixteenths_per_beat
+            is_strong = beat_index in self.strong_beats
+
+            # Para tiempos fuertes, preferir duraciones estables
+            if is_strong and random.random() < 0.6:
+                # Duración de un pulso completo
+                dur = self._get_beat_duration()
+                dur_sixteenths = self._duration_to_sixteenths(dur)
+                if dur_sixteenths <= remaining:
+                    durations.append(dur)
+                    self.markov_model.update_history(dur)
+                    current_sixteenths += dur_sixteenths
+                    continue
+
+            # Usar Markov para sugerir duración
+            fallback = [(1, 4), (1, 8), (1, 8)]
+            suggested = self.markov_model.suggest_duration(
+                weight=self.markov_weight * 1.2,  # Aumentar influencia
+                fallback_durations=fallback,
+            )
+
+            # Validar que la duración cabe en el espacio restante
+            suggested_sixteenths = self._duration_to_sixteenths(suggested)
+
+            if suggested_sixteenths <= remaining:
+                durations.append(suggested)
+                self.markov_model.update_history(suggested)
+                current_sixteenths += suggested_sixteenths
+            else:
+                # Si no cabe, usar duración que llene exactamente
+                fill_dur = self._sixteenths_to_duration(remaining)
+                durations.append(fill_dur)
+                self.markov_model.update_history(fill_dur)
+                current_sixteenths += remaining
+
+        return RhythmicPattern(
+            durations=durations, strong_beat_indices=self.strong_beats
+        )
+
+    def _get_beat_duration(self) -> Tuple[int, int]:
+        """Retorna la duración de un pulso según el compás."""
+        denom = self.meter_tuple[1]
+        return (1, denom)
+
+    def _duration_to_sixteenths(self, dur: Tuple[int, int]) -> int:
+        """Convierte duración a cantidad de semicorcheas."""
+        num, denom = dur
+        return int((num / denom) * 16)
+
+    def _sixteenths_to_duration(self, sixteenths: int) -> Tuple[int, int]:
+        """Convierte semicorcheas a duración."""
+        from math import gcd
+        num = sixteenths
+        denom = 16
+        g = gcd(num, denom)
+        return (num // g, denom // g)
 
     def _apply_rhythmic_variation(self, motif: RhythmicPattern) -> RhythmicPattern:
         """Aplica una variación sutil al motivo rítmico."""

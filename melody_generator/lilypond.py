@@ -9,6 +9,7 @@ import abjad
 from music21 import pitch, key
 
 from .scales import ScaleManager
+from .models import ImpulseType
 
 
 class LilyPondFormatter:
@@ -16,7 +17,14 @@ class LilyPondFormatter:
     Formatea la salida musical a código LilyPond.
     """
 
-    def __init__(self, scale_manager: ScaleManager, mode: str, meter_tuple: Tuple[int, int]):
+    def __init__(
+        self,
+        scale_manager: ScaleManager,
+        mode: str,
+        meter_tuple: Tuple[int, int],
+        impulse_type: ImpulseType = ImpulseType.TETIC,
+        anacrusis_duration: Optional[Tuple[int, int]] = None,
+    ):
         """
         Inicializa el formateador.
 
@@ -24,10 +32,46 @@ class LilyPondFormatter:
             scale_manager: Gestor de escalas
             mode: Modo musical
             meter_tuple: Compás (numerador, denominador)
+            impulse_type: Tipo de inicio (TETIC, ANACROUSTIC, ACEPHALOUS)
+            anacrusis_duration: Duración de la anacrusa (num, denom)
         """
         self.scale_manager = scale_manager
         self.mode = mode
         self.meter_tuple = meter_tuple
+        self.impulse_type = impulse_type
+        self.anacrusis_duration = anacrusis_duration or self._default_anacrusis()
+
+    def _default_anacrusis(self) -> Tuple[int, int]:
+        """Calcula duración por defecto de anacrusa (un pulso)."""
+        num, denom = self.meter_tuple
+        # Compases compuestos
+        if num in [6, 9, 12] and denom == 8:
+            return (1, 8)
+        return (1, denom)
+
+    def get_partial_command(self) -> str:
+        """
+        Genera el comando \\partial para anacrusis en LilyPond.
+
+        Returns:
+            String con comando \\partial (ej: "\\partial 4" para una negra)
+            o string vacío si no hay anacrusis
+        """
+        if self.impulse_type != ImpulseType.ANACROUSTIC:
+            return ""
+
+        num, denom = self.anacrusis_duration
+
+        if num == 1:
+            return f"\\partial {denom}"
+        elif num == 3:
+            # Duración con puntillo
+            base_map = {8: 4, 16: 8, 4: 2, 32: 16, 2: 1}
+            base = base_map.get(denom, denom)
+            return f"\\partial {base}."
+        else:
+            # Para otros casos, usar fracción
+            return f"\\partial {denom}*{num}"
 
     def convert_to_abjad_pitch(self, pitch_str: str) -> str:
         """
@@ -304,11 +348,16 @@ class LilyPondFormatter:
 
         Returns:
             String con código LilyPond completo
+
+        Nota: Para inicio anacrúsico, incluye automáticamente \\partial.
         """
         key_sig_str = self.get_key_signature_string()
         time_sig = f"\\time {self.meter_tuple[0]}/{self.meter_tuple[1]}"
         clef = '\\clef "treble"'
         strict_beaming = "\\set strictBeatBeaming = ##t"
+
+        # Comando \partial para anacrusis
+        partial_cmd = self.get_partial_command()
 
         music_code = self.to_absolute_lilypond(staff)
 
@@ -326,9 +375,15 @@ class LilyPondFormatter:
 
         lines = music_code.split("\n")
         if len(lines) > 1:
-            lines[1] = (
-                f"    {time_sig}\n    {key_sig_str}\n    {clef}\n    {strict_beaming}\n{lines[1]}"
-            )
+            # Construir la línea de indicaciones iniciales
+            initial_indications = f"    {time_sig}\n    {key_sig_str}\n    {clef}\n    {strict_beaming}"
+
+            # Añadir \partial si hay anacrusis
+            if partial_cmd:
+                initial_indications += f"\n    {partial_cmd}"
+
+            lines[1] = f"{initial_indications}\n{lines[1]}"
+
         output += "\n".join(lines)
 
         output += "\n\n  \\layout {}\n"

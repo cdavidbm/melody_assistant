@@ -146,21 +146,29 @@ class PitchSelector:
 
                 # Usar Markov si está disponible
                 if self.markov_model:
-                    # Obtener sugerencia de intervalo desde Markov
-                    fallback_intervals = [
-                        -1,
-                        1,
-                        2,
-                        -2,
-                    ]  # Grados conjuntos principalmente
-                    suggested_interval = self.markov_model.suggest_interval(
+                    # Obtener sugerencia de intervalo desde Markov (en semitonos)
+                    fallback_intervals = [-1, 1, 2, -2]
+                    suggested_semitones = self.markov_model.suggest_interval(
                         weight=self.markov_weight, fallback_intervals=fallback_intervals
                     )
 
-                    # Convertir intervalo a grado de escala
-                    last_p = pitch.Pitch(self.last_pitch)
-                    new_p = last_p.transpose(suggested_interval)
-                    degree = self.scale_manager.pitch_to_degree(new_p.nameWithOctave)
+                    # CORRECCIÓN: Convertir semitonos a movimiento diatónico
+                    # Los semitonos indican dirección y magnitud aproximada
+                    # Mapeamos a grados de escala para mantener tonalidad
+                    degree_movement = self._semitones_to_degree_movement(
+                        suggested_semitones
+                    )
+
+                    # Aplicar movimiento al grado actual
+                    new_degree = last_degree + degree_movement
+
+                    # Normalizar a rango 1-7
+                    while new_degree > 7:
+                        new_degree -= 7
+                    while new_degree < 1:
+                        new_degree += 7
+
+                    degree = new_degree
                 else:
                     # Lógica tradicional (sin Markov)
                     if random.random() < 0.5:
@@ -348,3 +356,43 @@ class PitchSelector:
     def set_last_was_rest(self, value: bool):
         """Actualiza el estado de si el último evento fue silencio."""
         self.last_was_rest = value
+
+    def _semitones_to_degree_movement(self, semitones: int) -> int:
+        """
+        Convierte un intervalo en semitonos a un movimiento en grados de escala.
+
+        Mapeo aproximado (asumiendo escala diatónica promedio):
+        - 0 semitonos → 0 grados (unísono)
+        - 1-2 semitonos → 1 grado (segunda)
+        - 3-4 semitonos → 2 grados (tercera)
+        - 5-6 semitonos → 3 grados (cuarta)
+        - 7-8 semitonos → 4 grados (quinta)
+        - 9-10 semitonos → 5 grados (sexta)
+        - 11-12 semitonos → 6-7 grados (séptima/octava)
+
+        Args:
+            semitones: Intervalo en semitonos (puede ser negativo)
+
+        Returns:
+            Movimiento en grados de escala (1 = segunda, 2 = tercera, etc.)
+        """
+        direction = 1 if semitones >= 0 else -1
+        abs_semitones = abs(semitones)
+
+        # Mapeo de semitonos a grados
+        if abs_semitones == 0:
+            degree_movement = 0
+        elif abs_semitones <= 2:
+            degree_movement = 1  # Segunda
+        elif abs_semitones <= 4:
+            degree_movement = 2  # Tercera
+        elif abs_semitones <= 6:
+            degree_movement = 3  # Cuarta
+        elif abs_semitones <= 8:
+            degree_movement = 4  # Quinta
+        elif abs_semitones <= 10:
+            degree_movement = 5  # Sexta
+        else:
+            degree_movement = 6  # Séptima
+
+        return direction * degree_movement

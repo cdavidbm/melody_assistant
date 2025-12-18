@@ -9,7 +9,7 @@ from typing import List, Tuple, Optional
 
 import abjad
 
-from .models import Motif, HarmonicFunction, Phrase, Semiphrase, Period
+from .models import Motif, HarmonicFunction, Phrase, Semiphrase, Period, ImpulseType
 from .scales import ScaleManager
 from .harmony import HarmonyManager
 from .rhythm import RhythmGenerator
@@ -33,9 +33,13 @@ class PeriodGenerator:
         lilypond_formatter: LilyPondFormatter,
         num_measures: int,
         meter_tuple: Tuple[int, int],
+        impulse_type: ImpulseType = ImpulseType.TETIC,
     ):
         """
         Inicializa el generador de períodos.
+
+        Args:
+            impulse_type: Tipo de inicio (TETIC, ANACROUSTIC, ACEPHALOUS)
         """
         self.scale_manager = scale_manager
         self.harmony_manager = harmony_manager
@@ -45,6 +49,29 @@ class PeriodGenerator:
         self.lilypond_formatter = lilypond_formatter
         self.num_measures = num_measures
         self.meter_tuple = meter_tuple
+        self.impulse_type = impulse_type
+
+        # Calcular duración de anacrusa (típicamente 1 pulso antes del tiempo fuerte)
+        self.anacrusis_duration = self._calculate_anacrusis_duration()
+
+    def _calculate_anacrusis_duration(self) -> Tuple[int, int]:
+        """
+        Calcula la duración de la anacrusa según el compás.
+
+        Para compases simples: 1 pulso (ej: negra en 4/4)
+        Para compases compuestos: 1 subdivisión (ej: corchea en 6/8)
+
+        Returns:
+            Tupla (numerador, denominador) de la duración
+        """
+        num, denom = self.meter_tuple
+
+        # Compases compuestos (6/8, 9/8, 12/8)
+        if num in [6, 9, 12] and denom == 8:
+            return (1, 8)  # Una corchea
+
+        # Compases simples: un pulso
+        return (1, denom)
 
     def generate_period(self) -> abjad.Staff:
         """
@@ -52,10 +79,24 @@ class PeriodGenerator:
 
         Implementa la estructura de pregunta-respuesta con cadencias apropiadas.
         Genera un motivo rítmico base que se reutiliza para cohesión.
+
+        Soporta tres tipos de inicio:
+        - TETIC: Comienza en tiempo fuerte (compás completo)
+        - ANACROUSTIC: Comienza con anacrusa (compás parcial antes del primero)
+        - ACEPHALOUS: Comienza con silencio en tiempo fuerte
         """
         staff = abjad.Staff(name="Melodia")
 
         self.rhythm_generator.initialize_base_motif()
+
+        # Manejar anacrusa (compás parcial antes del primer compás completo)
+        if self.impulse_type == ImpulseType.ANACROUSTIC:
+            anacrusis_container = self._create_anacrusis_measure()
+            staff.append(anacrusis_container)
+            # Añadir barra después de la anacrusa
+            last_leaf = abjad.get.leaf(anacrusis_container, -1)
+            if last_leaf:
+                abjad.attach(abjad.BarLine("|"), last_leaf)
 
         midpoint = self.num_measures // 2
 
@@ -63,16 +104,26 @@ class PeriodGenerator:
             is_antecedent_end = m_idx == midpoint - 1
             is_period_end = m_idx == self.num_measures - 1
 
+            # Para ACEPHALOUS, el primer compás comienza con silencio
+            force_initial_rest = (
+                self.impulse_type == ImpulseType.ACEPHALOUS and m_idx == 0
+            )
+
             if is_period_end:
                 container = self._create_measure(
-                    m_idx, is_cadence=True, cadence_type="authentic"
+                    m_idx, is_cadence=True, cadence_type="authentic",
+                    force_initial_rest=force_initial_rest
                 )
             elif is_antecedent_end:
                 container = self._create_measure(
-                    m_idx, is_cadence=True, cadence_type="half"
+                    m_idx, is_cadence=True, cadence_type="half",
+                    force_initial_rest=force_initial_rest
                 )
             else:
-                container = self._create_measure(m_idx, is_cadence=False)
+                container = self._create_measure(
+                    m_idx, is_cadence=False,
+                    force_initial_rest=force_initial_rest
+                )
 
             staff.append(container)
 
@@ -89,6 +140,30 @@ class PeriodGenerator:
         self._add_ties_to_staff(staff)
 
         return staff
+
+    def _create_anacrusis_measure(self) -> abjad.Container:
+        """
+        Crea el compás de anacrusa (pickup).
+
+        La anacrusa contiene típicamente una o pocas notas que preceden
+        al primer tiempo fuerte del primer compás completo.
+        """
+        notes = []
+
+        # Obtener pitch para la anacrusa (típicamente dominante o tónica)
+        # Usar grado 5 (dominante) para crear expectativa hacia la tónica
+        anacrusis_pitch = self.scale_manager.get_pitch_by_degree(5)
+        abjad_pitch = self.lilypond_formatter.convert_to_abjad_pitch(anacrusis_pitch)
+
+        # Crear nota con duración de anacrusa
+        note_string = self._create_note_string(abjad_pitch, self.anacrusis_duration)
+        note = abjad.Note(note_string)
+        notes.append(note)
+
+        # Guardar el pitch para continuidad melódica
+        self.pitch_selector.last_pitch = anacrusis_pitch
+
+        return abjad.Container(notes)
 
     def generate_period_hierarchical(
         self, return_structure: bool = False
@@ -315,8 +390,18 @@ class PeriodGenerator:
         measure_index: int,
         is_cadence: bool = False,
         cadence_type: str = "authentic",
+        force_initial_rest: bool = False,
     ) -> abjad.Container:
-        """Crea un compás basado en la estructura de pulsos y la teoría armónica."""
+        """
+        Crea un compás basado en la estructura de pulsos y la teoría armónica.
+
+        Args:
+            measure_index: Índice del compás
+            is_cadence: Si es un compás cadencial
+            cadence_type: Tipo de cadencia ("authentic" o "half")
+            force_initial_rest: Si True, fuerza un silencio en el primer tiempo
+                              (para inicio acéfalo)
+        """
         notes = []
 
         rhythm_pattern = self.rhythm_generator.get_rhythmic_pattern_with_variation(
@@ -335,9 +420,14 @@ class PeriodGenerator:
             is_phrase_boundary = is_near_end and measure_index % 2 == 1
 
             beat_index_int = int(beat_position)
-            use_rest = self.pitch_selector.should_use_rest(
-                measure_index, beat_index_int, is_strong, is_phrase_boundary
-            )
+
+            # Forzar silencio inicial para inicio acéfalo
+            if force_initial_rest and note_index == 0:
+                use_rest = True
+            else:
+                use_rest = self.pitch_selector.should_use_rest(
+                    measure_index, beat_index_int, is_strong, is_phrase_boundary
+                )
 
             if use_rest:
                 rest = self._create_rest(duration)

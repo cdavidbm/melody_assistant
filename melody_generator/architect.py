@@ -192,6 +192,7 @@ class MelodicArchitect:
             scale_manager=self.scale_manager,
             mode=config.tonal.mode,
             meter_tuple=config.meter.meter_tuple,
+            impulse_type=config.melody.impulse_type,
         )
 
         self.period_generator = PeriodGenerator(
@@ -203,6 +204,7 @@ class MelodicArchitect:
             lilypond_formatter=self.lilypond_formatter,
             num_measures=config.meter.num_measures,
             meter_tuple=config.meter.meter_tuple,
+            impulse_type=config.melody.impulse_type,
         )
 
     @classmethod
