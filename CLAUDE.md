@@ -26,19 +26,24 @@ No tests or linting configured.
 
 ```
 melody_generator/
-├── __init__.py       # Exports: MelodicArchitect, ImpulseType, etc.
+├── __init__.py       # Exports: MelodicArchitect, GenerationConfig, etc.
 ├── __main__.py       # Entry point for python -m melody_generator
+├── config.py         # NEW: Dataclasses de configuración (SOLID: SRP)
+├── protocols.py      # NEW: Interfaces/Protocolos ABC (SOLID: DIP, ISP)
+├── loaders.py        # NEW: Factories para Markov (SOLID: SRP)
+├── converters.py     # NEW: Conversores Abjad↔music21 (SOLID: SRP)
 ├── models.py         # Enums and dataclasses
 ├── scales.py         # Scale/mode management (ScaleManager)
 ├── harmony.py        # Harmonic progressions (HarmonyManager)
 ├── rhythm.py         # Rhythmic patterns (RhythmGenerator)
 ├── pitch.py          # Pitch selection (PitchSelector)
 ├── motif.py          # Motif creation/variation (MotifGenerator)
-├── markov.py         # Markov chains (MarkovChain, MelodicMarkovModel, RhythmicMarkovModel)
+├── markov.py         # Markov chains (BaseMarkovModel, MelodicMarkovModel, RhythmicMarkovModel)
 ├── lilypond.py       # LilyPond output (LilyPondFormatter)
 ├── generation.py     # Period generation (PeriodGenerator)
-├── architect.py      # Main orchestrator (MelodicArchitect)
-└── cli.py            # CLI interface
+├── architect.py      # Main orchestrator with DI (MelodicArchitect)
+├── validation.py     # Music validation (MusicValidator, AutoCorrector)
+└── cli.py            # CLI interface (refactored into functions)
 
 models/               # Pre-trained Markov models
 ├── melody_markov/    # Melodic interval models
@@ -81,9 +86,59 @@ main.py               # Wrapper for backwards compatibility
 | `motif.py` | `MotifGenerator` | Base motif creation, 6 variation types |
 | `generation.py` | `PeriodGenerator` | Traditional and hierarchical generation |
 | `lilypond.py` | `LilyPondFormatter` | Abjad-to-LilyPond conversion |
-| `markov.py` | `MarkovChain`, `MelodicMarkovModel`, `RhythmicMarkovModel` | Markov chain learning from music21 corpus |
-| `architect.py` | `MelodicArchitect` | Main entry point, orchestrates all modules |
-| `cli.py` | - | Interactive command-line interface |
+| `markov.py` | `BaseMarkovModel`, `MelodicMarkovModel`, `RhythmicMarkovModel` | Markov chain learning from music21 corpus |
+| `architect.py` | `MelodicArchitect` | Main entry point with DI support, orchestrates all modules |
+| `cli.py` | - | Interactive CLI with refactored functions |
+| `config.py` | `GenerationConfig`, `TonalConfig`, etc. | Dataclasses de configuración centralizada |
+| `protocols.py` | Protocol classes | Interfaces para inyección de dependencias |
+| `loaders.py` | `MarkovModelLoader` | Factory para carga de modelos Markov |
+| `converters.py` | `AbjadMusic21Converter` | Conversiones entre Abjad y music21 |
+
+## SOLID Architecture (v3.0)
+
+### Principios Aplicados
+
+| Principio | Implementación |
+|-----------|----------------|
+| **SRP** | `config.py` para configuración, `loaders.py` para carga, `converters.py` para conversión |
+| **OCP** | Nuevos modos/variaciones se agregan sin modificar clases existentes |
+| **LSP** | `BaseMarkovModel` → `MelodicMarkovModel`, `RhythmicMarkovModel` |
+| **ISP** | Protocolos específicos: `PitchSelectorProtocol`, `RhythmGeneratorProtocol`, etc. |
+| **DIP** | `MelodicArchitect` acepta dependencias inyectadas vía protocolos |
+
+### Configuración Centralizada
+
+```python
+from melody_generator import GenerationConfig, TonalConfig, MeterConfig, MarkovConfig
+
+# Modo 1: Configuración completa
+config = GenerationConfig(
+    tonal=TonalConfig(key_name="D", mode="dorian"),
+    meter=MeterConfig(meter_tuple=(3, 4), num_measures=16),
+    markov=MarkovConfig(enabled=True, composer="bach"),
+)
+architect = MelodicArchitect.from_config(config)
+
+# Modo 2: API legacy (compatible)
+architect = MelodicArchitect(key_name="C", mode="major", num_measures=8)
+
+# Modo 3: Factory con defaults
+architect = MelodicArchitect.with_defaults()
+```
+
+### Inyección de Dependencias
+
+```python
+from melody_generator import MelodicArchitect
+from melody_generator.scales import ScaleManager
+
+# Inyectar dependencia personalizada
+custom_scale = ScaleManager("C", "major")
+architect = MelodicArchitect(
+    config=config,
+    scale_manager=custom_scale,  # Inyectado
+)
+```
 
 ## Critical Conventions
 

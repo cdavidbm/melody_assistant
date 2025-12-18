@@ -5,6 +5,7 @@ Implementa aprendizaje de patrones melódicos y rítmicos desde corpus.
 
 import json
 import random
+from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from fractions import Fraction
@@ -219,7 +220,80 @@ class MarkovChain:
             self.transitions[state_key] = reconstructed_next
 
 
-class MelodicMarkovModel:
+class BaseMarkovModel(ABC):
+    """
+    Clase base abstracta para modelos de Markov musicales.
+
+    Proporciona funcionalidad común para modelos melódicos y rítmicos,
+    siguiendo el principio de Liskov Substitution (LSP).
+    """
+
+    def __init__(self, order: int = 2, composer: str = "bach"):
+        """
+        Inicializa el modelo base.
+
+        Args:
+            order: Orden de la cadena (1-3)
+            composer: "bach", "mozart", "beethoven", "combined"
+        """
+        self.order = order
+        self.composer = composer
+        self.chain = MarkovChain(order=order)
+        self._history: List[Any] = []
+
+    @abstractmethod
+    def train_from_corpus(
+        self, composer: str = "bach", max_works: Optional[int] = None, voice_part: int = 0
+    ) -> None:
+        """
+        Entrena el modelo desde el corpus de music21.
+
+        Args:
+            composer: Compositor o "all" para todos
+            max_works: Límite de obras (None = todas)
+            voice_part: Índice de voz a extraer
+        """
+        ...
+
+    @abstractmethod
+    def suggest_next(self, weight: float = 0.5, fallback: Optional[List[Any]] = None) -> Any:
+        """
+        Sugiere el siguiente valor basado en historial.
+
+        Args:
+            weight: Peso del Markov (0.0-1.0)
+            fallback: Valores de respaldo si Markov falla
+
+        Returns:
+            Valor sugerido
+        """
+        ...
+
+    def update_history(self, value: Any) -> None:
+        """
+        Actualiza el historial con un nuevo valor.
+
+        Args:
+            value: Valor a agregar al historial
+        """
+        self._history.append(value)
+        # Mantener ventana razonable
+        max_history = self.order + 20
+        if len(self._history) > max_history:
+            self._history = self._history[-max_history:]
+
+    def reset_history(self) -> None:
+        """Reinicia el historial (al empezar nueva melodía)."""
+        self._history = []
+
+    def _get_prev_state(self) -> Optional[Tuple]:
+        """Obtiene el estado previo para predicción."""
+        if len(self._history) < self.order:
+            return None
+        return tuple(self._history[-self.order:])
+
+
+class MelodicMarkovModel(BaseMarkovModel):
     """
     Modelo de Markov específico para intervalos melódicos.
 
@@ -235,10 +309,9 @@ class MelodicMarkovModel:
             order: Orden de la cadena (2 o 3 recomendado)
             composer: "bach", "mozart", "beethoven", "combined"
         """
-        self.order = order
-        self.composer = composer
-        self.chain = MarkovChain(order=order)
-        self._interval_history: List[int] = []
+        super().__init__(order=order, composer=composer)
+        # Alias para compatibilidad
+        self._interval_history = self._history
 
     def train_from_corpus(
         self,
@@ -329,6 +402,15 @@ class MelodicMarkovModel:
 
         print(f"  Transiciones únicas aprendidas: {len(self.chain.transitions)}")
 
+    def suggest_next(
+        self, weight: float = 0.5, fallback: Optional[List[Any]] = None
+    ) -> int:
+        """
+        Implementación de la interfaz abstracta.
+        Delega a suggest_interval para compatibilidad.
+        """
+        return self.suggest_interval(weight=weight, fallback_intervals=fallback)
+
     def suggest_interval(
         self, weight: float = 0.5, fallback_intervals: Optional[List[int]] = None
     ) -> int:
@@ -348,11 +430,9 @@ class MelodicMarkovModel:
             fallback_intervals = [-1, 1, 2]  # Grados conjuntos por defecto
 
         # Si no hay suficiente contexto, usar fallback
-        if len(self._interval_history) < self.order:
+        prev_state = self._get_prev_state()
+        if prev_state is None:
             return random.choice(fallback_intervals)
-
-        # Obtener contexto previo
-        prev_state = tuple(self._interval_history[-self.order :])
 
         # Decidir si usar Markov basado en weight
         if random.random() > weight:
@@ -367,26 +447,8 @@ class MelodicMarkovModel:
 
         return markov_suggestion
 
-    def update_history(self, interval: int):
-        """
-        Actualiza historial de intervalos.
 
-        Args:
-            interval: Intervalo en semitonos que se usó
-        """
-        self._interval_history.append(interval)
-
-        # Mantener solo ventana razonable (orden + buffer)
-        max_history = self.order + 20
-        if len(self._interval_history) > max_history:
-            self._interval_history = self._interval_history[-max_history:]
-
-    def reset_history(self):
-        """Reinicia historial (al empezar nueva melodía)."""
-        self._interval_history = []
-
-
-class RhythmicMarkovModel:
+class RhythmicMarkovModel(BaseMarkovModel):
     """
     Modelo de Markov para patrones rítmicos.
 
@@ -402,10 +464,9 @@ class RhythmicMarkovModel:
             order: Orden de la cadena (2 recomendado)
             composer: "bach", "mozart", "beethoven", "combined"
         """
-        self.order = order
-        self.composer = composer
-        self.chain = MarkovChain(order=order)
-        self._rhythm_history: List[Tuple[int, int]] = []
+        super().__init__(order=order, composer=composer)
+        # Alias para compatibilidad
+        self._rhythm_history = self._history
 
     def _quarter_length_to_tuple(self, ql: float) -> Tuple[int, int]:
         """
@@ -525,6 +586,15 @@ class RhythmicMarkovModel:
 
         print(f"  Transiciones únicas aprendidas: {len(self.chain.transitions)}")
 
+    def suggest_next(
+        self, weight: float = 0.5, fallback: Optional[List[Any]] = None
+    ) -> Tuple[int, int]:
+        """
+        Implementación de la interfaz abstracta.
+        Delega a suggest_duration para compatibilidad.
+        """
+        return self.suggest_duration(weight=weight, fallback_durations=fallback)
+
     def suggest_duration(
         self,
         weight: float = 0.5,
@@ -544,11 +614,9 @@ class RhythmicMarkovModel:
             fallback_durations = [(1, 4), (1, 8)]  # Negra, corchea
 
         # Si no hay suficiente contexto, usar fallback
-        if len(self._rhythm_history) < self.order:
+        prev_state = self._get_prev_state()
+        if prev_state is None:
             return random.choice(fallback_durations)
-
-        # Obtener contexto previo
-        prev_state = tuple(self._rhythm_history[-self.order :])
 
         # Decidir si usar Markov basado en weight
         if random.random() > weight:
@@ -561,21 +629,3 @@ class RhythmicMarkovModel:
             return random.choice(fallback_durations)
 
         return markov_suggestion
-
-    def update_history(self, duration: Tuple[int, int]):
-        """
-        Actualiza historial de duraciones.
-
-        Args:
-            duration: Tupla (numerador, denominador) que se usó
-        """
-        self._rhythm_history.append(duration)
-
-        # Mantener solo ventana razonable
-        max_history = self.order + 20
-        if len(self._rhythm_history) > max_history:
-            self._rhythm_history = self._rhythm_history[-max_history:]
-
-    def reset_history(self):
-        """Reinicia historial (al empezar nueva melodía)."""
-        self._rhythm_history = []

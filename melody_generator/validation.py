@@ -3,15 +3,13 @@ Sistema de validación musical con music21.
 Valida que las partituras generadas cumplan con especificaciones musicales.
 """
 
-import os
-import re
-import tempfile
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Any
-from pathlib import Path
 
 import abjad
-from music21 import converter, key, stream, interval
+from music21 import key, stream, interval
+
+from .converters import AbjadMusic21Converter
 
 
 @dataclass
@@ -499,101 +497,15 @@ class MusicValidator:
     def _abjad_to_music21(self) -> stream.Score:
         """
         Convierte Staff de Abjad a Score de music21.
-        Extrae directamente las notas y duraciones del staff de Abjad.
+
+        Utiliza el conversor centralizado para Single Responsibility.
         """
-        from music21 import note as m21_note, meter as m21_meter
-
-        score = stream.Score()
-        part = stream.Part()
-
-        # Añadir time signature
-        ts_str = f"{self.lilypond_formatter.meter_tuple[0]}/{self.lilypond_formatter.meter_tuple[1]}"
-        ts = m21_meter.TimeSignature(ts_str)
-        part.insert(0, ts)
-
-        # Añadir key signature
-        try:
-            ks = key.Key(self.expected_key, self.expected_mode)
-            part.insert(0, ks)
-        except:
-            pass
-
-        # Iterar sobre las hojas (notes y rests) del staff
-        current_measure = stream.Measure(number=1)
-        measure_duration = 0.0
-        expected_measure_duration = (
-            self.lilypond_formatter.meter_tuple[0]
-            / self.lilypond_formatter.meter_tuple[1]
-            * 4.0  # quarter note = 1.0
+        return AbjadMusic21Converter.abjad_staff_to_music21_score(
+            staff=self.staff,
+            key_name=self.expected_key,
+            mode=self.expected_mode,
+            meter_tuple=self.lilypond_formatter.meter_tuple,
         )
-        measure_num = 1
-
-        try:
-            # Usar abjad.iterate para recorrer las hojas
-            for leaf in abjad.iterate.leaves(self.staff):
-                # Obtener duración en quarter notes
-                duration = abjad.get.duration(leaf)
-                duration_quarters = float(duration) * 4.0  # Convert to quarter notes
-
-                # Verificar si es nota o silencio
-                if isinstance(leaf, abjad.Note):
-                    # Extraer pitch desde formato LilyPond de Abjad
-                    lily_str = abjad.lilypond(leaf)
-
-                    # Extraer solo el pitch (antes del número de duración)
-                    match = re.match(r"([a-g][',is#esf]*)", lily_str)
-                    if match:
-                        pitch_lily = match.group(1)
-
-                        # Convertir notación LilyPond a music21
-                        # Obtener base note
-                        base_pitch = re.sub(r"[',is#esf]+", "", pitch_lily)
-
-                        # Manejar alteraciones
-                        accidental_str = ""
-                        if "is" in pitch_lily:
-                            accidental_str = "#"
-                        elif "es" in pitch_lily:
-                            accidental_str = "-"
-
-                        # Calcular octava (c, = C2; c = C3; c' = C4; c'' = C5)
-                        num_apostrophes = pitch_lily.count("'")
-                        num_commas = pitch_lily.count(",")
-                        octave = 3 + num_apostrophes - num_commas
-
-                        pitch_str = f"{base_pitch.upper()}{accidental_str}{octave}"
-
-                        n = m21_note.Note(pitch_str)
-                        n.quarterLength = duration_quarters
-                        current_measure.append(n)
-
-                elif isinstance(leaf, abjad.Rest):
-                    r = m21_note.Rest()
-                    r.quarterLength = duration_quarters
-                    current_measure.append(r)
-
-                measure_duration += duration_quarters
-
-                # Verificar si completamos un compás
-                if abs(measure_duration - expected_measure_duration) < 0.01:
-                    if len(current_measure.notesAndRests) > 0:
-                        part.append(current_measure)
-                    measure_num += 1
-                    current_measure = stream.Measure(number=measure_num)
-                    measure_duration = 0.0
-
-        except Exception as e:
-            # Si hay error, al menos tenemos un compás parcial
-            pass
-
-        # Añadir último compás si tiene contenido y no fue ya añadido
-        if len(current_measure.notesAndRests) > 0 and current_measure.id not in [
-            m.id for m in part.getElementsByClass(stream.Measure)
-        ]:
-            part.append(current_measure)
-
-        score.insert(0, part)
-        return score
 
     def _calculate_diatonic_percentage(self, expected_key: key.Key) -> float:
         """Calcula porcentaje de notas diatónicas a la escala."""
