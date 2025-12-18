@@ -1,0 +1,225 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <form hx-post="/generate"
+          hx-target="#result"
+          hx-swap="innerHTML"
+          hx-indicator="#loading">
+
+        <!-- Configuracion Tonal -->
+        <fieldset>
+            <legend>Configuracion Tonal</legend>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="key">Tonalidad</label>
+                    <select name="key" id="key">
+                        {% for k in keys %}
+                        <option value="{{ k }}" {{ 'selected' if k == defaults.key else '' }}>{{ k }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="mode">Modo</label>
+                    <select name="mode" id="mode">
+                        <optgroup label="Modos Diatonicos">
+                            <option value="1" {{ 'selected' if defaults.mode == '1' else '' }}>Major (Jonico)</option>
+                            <option value="2" {{ 'selected' if defaults.mode == '2' else '' }}>Dorian (Dorico)</option>
+                            <option value="3" {{ 'selected' if defaults.mode == '3' else '' }}>Phrygian (Frigio)</option>
+                            <option value="4" {{ 'selected' if defaults.mode == '4' else '' }}>Lydian (Lidio)</option>
+                            <option value="5" {{ 'selected' if defaults.mode == '5' else '' }}>Mixolydian (Mixolidio)</option>
+                            <option value="6" {{ 'selected' if defaults.mode == '6' else '' }}>Minor (Eolico)</option>
+                            <option value="7" {{ 'selected' if defaults.mode == '7' else '' }}>Locrian (Locrio)</option>
+                        </optgroup>
+                        <optgroup label="Escalas Menores">
+                            <option value="8" {{ 'selected' if defaults.mode == '8' else '' }}>Menor Armonica</option>
+                            <option value="9" {{ 'selected' if defaults.mode == '9' else '' }}>Menor Melodica</option>
+                        </optgroup>
+                        <optgroup label="Modos de Menor Armonica">
+                            <option value="10" {{ 'selected' if defaults.mode == '10' else '' }}>Locrio nat6</option>
+                            <option value="11" {{ 'selected' if defaults.mode == '11' else '' }}>Jonico aug5</option>
+                            <option value="12" {{ 'selected' if defaults.mode == '12' else '' }}>Dorico #4</option>
+                            <option value="13" {{ 'selected' if defaults.mode == '13' else '' }}>Frigio Dominante</option>
+                            <option value="14" {{ 'selected' if defaults.mode == '14' else '' }}>Lidio #2</option>
+                            <option value="15" {{ 'selected' if defaults.mode == '15' else '' }}>Superlocrio</option>
+                        </optgroup>
+                        <optgroup label="Modos de Menor Melodica">
+                            <option value="16" {{ 'selected' if defaults.mode == '16' else '' }}>Dorico b2</option>
+                            <option value="17" {{ 'selected' if defaults.mode == '17' else '' }}>Lidio Aumentado</option>
+                            <option value="18" {{ 'selected' if defaults.mode == '18' else '' }}>Lidio Dominante</option>
+                            <option value="19" {{ 'selected' if defaults.mode == '19' else '' }}>Mixolidio b6</option>
+                            <option value="20" {{ 'selected' if defaults.mode == '20' else '' }}>Locrio nat2</option>
+                            <option value="21" {{ 'selected' if defaults.mode == '21' else '' }}>Alterado</option>
+                        </optgroup>
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Configuracion Metrica -->
+        <fieldset>
+            <legend>Configuracion Metrica</legend>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="meter_num">Compas</label>
+                    <div class="meter-input">
+                        <select name="meter_num" id="meter_num">
+                            {% for n in [2, 3, 4, 5, 6, 7, 9, 12] %}
+                            <option value="{{ n }}" {{ 'selected' if n == defaults.meter_num else '' }}>{{ n }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="meter-divider">/</span>
+                        <select name="meter_den" id="meter_den">
+                            {% for d in [2, 4, 8, 16] %}
+                            <option value="{{ d }}" {{ 'selected' if d == defaults.meter_den else '' }}>{{ d }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="num_measures">Numero de compases</label>
+                    <select name="num_measures" id="num_measures">
+                        {% for m in [2, 4, 8, 12, 16, 24, 32] %}
+                        <option value="{{ m }}" {{ 'selected' if m == defaults.num_measures else '' }}>{{ m }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Configuracion Ritmica -->
+        <fieldset>
+            <legend>Configuracion Ritmica</legend>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="complexity">Complejidad ritmica</label>
+                    <select name="complexity" id="complexity">
+                        <option value="1" {{ 'selected' if defaults.complexity == 1 else '' }}>Simple (negras y corcheas)</option>
+                        <option value="2" {{ 'selected' if defaults.complexity == 2 else '' }}>Moderado (incluye puntillos)</option>
+                        <option value="3" {{ 'selected' if defaults.complexity == 3 else '' }}>Complejo (semicorcheas)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="impulse">Tipo de impulso</label>
+                    <select name="impulse" id="impulse">
+                        {% for value, label in impulse_options %}
+                        <option value="{{ value }}" {{ 'selected' if value == defaults.impulse else '' }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="use_rests" id="use_rests" {{ 'checked' if defaults.use_rests else '' }}>
+                    <label for="use_rests">Usar silencios como respiraciones</label>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Configuracion Melodica -->
+        <fieldset>
+            <legend>Configuracion Melodica</legend>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="climax_position">Posicion del climax (0.0 - 1.0)</label>
+                    <input type="range" name="climax_position" id="climax_position"
+                           min="0.1" max="0.9" step="0.05" value="{{ defaults.climax_position }}"
+                           oninput="this.nextElementSibling.value = this.value">
+                    <output>{{ defaults.climax_position }}</output>
+                </div>
+
+                <div class="form-group">
+                    <label for="variation_freedom">Libertad de variacion motivica</label>
+                    <select name="variation_freedom" id="variation_freedom">
+                        <option value="1" {{ 'selected' if defaults.variation_freedom == 1 else '' }}>Estricta (conservador)</option>
+                        <option value="2" {{ 'selected' if defaults.variation_freedom == 2 else '' }}>Moderada (equilibrio)</option>
+                        <option value="3" {{ 'selected' if defaults.variation_freedom == 3 else '' }}>Libre (creativo)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="use_hierarchical" id="use_hierarchical">
+                    <label for="use_hierarchical">Metodo jerarquico (Motivo - Frase - Periodo)</label>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Cadenas de Markov -->
+        <fieldset>
+            <legend>Cadenas de Markov (Opcional)</legend>
+
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="use_markov" id="use_markov" {{ 'checked' if defaults.use_markov else '' }}>
+                    <label for="use_markov">Usar cadenas de Markov</label>
+                </div>
+            </div>
+
+            <div class="markov-options" id="markov-options">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="composer">Compositor de referencia</label>
+                        <select name="composer" id="composer">
+                            {% for value, label in composers %}
+                            <option value="{{ value }}" {{ 'selected' if value == defaults.composer else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="markov_weight">Peso de Markov (0.0 - 1.0)</label>
+                        <input type="range" name="markov_weight" id="markov_weight"
+                               min="0" max="1" step="0.1" value="{{ defaults.markov_weight }}"
+                               oninput="this.nextElementSibling.value = this.value">
+                        <output>{{ defaults.markov_weight }}</output>
+                    </div>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Informacion de Partitura -->
+        <fieldset>
+            <legend>Informacion de Partitura</legend>
+
+            <div class="form-row">
+                <div class="form-group full-width">
+                    <label for="title">Titulo</label>
+                    <input type="text" name="title" id="title" value="{{ defaults.title }}" placeholder="Melodia Generada">
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Submit -->
+        <div class="form-actions">
+            <button type="submit" class="btn-primary">
+                <span class="btn-text">Generar Melodia</span>
+                <span class="htmx-indicator" id="loading">Generando...</span>
+            </button>
+        </div>
+    </form>
+
+    <!-- Result container (will be updated by HTMX) -->
+    <div id="result"></div>
+</div>
+
+<script>
+    // Toggle Markov options visibility
+    document.getElementById('use_markov').addEventListener('change', function() {
+        document.getElementById('markov-options').style.display = this.checked ? 'block' : 'none';
+    });
+
+    // Initialize visibility
+    document.getElementById('markov-options').style.display =
+        document.getElementById('use_markov').checked ? 'block' : 'none';
+</script>
+{% endblock %}

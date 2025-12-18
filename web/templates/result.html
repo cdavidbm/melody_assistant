@@ -1,0 +1,85 @@
+{% if success %}
+<div class="result-container">
+    <h2>Melodia Generada</h2>
+
+    <div class="result-meta">
+        <span class="meta-item"><strong>Tonalidad:</strong> {{ key_name }} {{ mode }}</span>
+        <span class="meta-item"><strong>Compas:</strong> {{ meter }}</span>
+        <span class="meta-item"><strong>Compases:</strong> {{ num_measures }}</span>
+    </div>
+
+    {% if lilypond_error %}
+    <div class="warning-box">
+        <h4>Advertencia de LilyPond</h4>
+        <p>{{ lilypond_error }}</p>
+    </div>
+    {% endif %}
+
+    <!-- PDF Viewer -->
+    {% if pdf_path %}
+    <div class="result-section">
+        <h3>Partitura</h3>
+        <div class="pdf-container">
+            <embed src="{{ url_for('serve_output', filename=pdf_path) }}"
+                   type="application/pdf"
+                   width="100%"
+                   height="500px">
+        </div>
+        <a href="{{ url_for('serve_output', filename=pdf_path) }}"
+           class="btn-download" download>
+            Descargar PDF
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- MIDI Player -->
+    {% if midi_path %}
+    <div class="result-section">
+        <h3>Reproducir MIDI</h3>
+        <div class="midi-container">
+            <midi-player
+                src="{{ url_for('serve_output', filename=midi_path) }}"
+                sound-font>
+            </midi-player>
+        </div>
+        <a href="{{ url_for('serve_output', filename=midi_path) }}"
+           class="btn-download" download>
+            Descargar MIDI
+        </a>
+    </div>
+    {% endif %}
+
+    <!-- LilyPond Code -->
+    <div class="result-section">
+        <h3>Codigo LilyPond</h3>
+        <div class="code-container">
+            <button class="btn-copy" onclick="copyCode()">Copiar codigo</button>
+            <pre><code id="lilypond-code">{{ lilypond_code }}</code></pre>
+        </div>
+        <a href="{{ url_for('serve_output', filename=ly_filename) }}"
+           class="btn-download" download>
+            Descargar .ly
+        </a>
+    </div>
+</div>
+
+<script>
+function copyCode() {
+    const code = document.getElementById('lilypond-code').textContent;
+    navigator.clipboard.writeText(code).then(() => {
+        const btn = document.querySelector('.btn-copy');
+        btn.textContent = 'Copiado!';
+        setTimeout(() => btn.textContent = 'Copiar codigo', 2000);
+    });
+}
+</script>
+
+{% else %}
+<div class="error-container">
+    <h2>Error al generar la melodia</h2>
+    <div class="error-box">
+        <p>{{ error }}</p>
+    </div>
+    <p>Por favor, verifica los parametros e intenta nuevamente.</p>
+</div>
+{% endif %}
