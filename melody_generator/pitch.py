@@ -72,6 +72,7 @@ class PitchSelector:
         self.infraction_pending_compensation = False
         self.last_was_rest = False
         self.must_recover_leap = False
+        self.pending_tendency_resolution: Optional[int] = None  # Grado que debe resolver
 
         # Control del clímax
         self.climax_measure = int(num_measures * contour.climax_position)
@@ -144,8 +145,14 @@ class PitchSelector:
             if self.last_pitch:
                 last_degree = self.scale_manager.pitch_to_degree(self.last_pitch)
 
+                # RESOLUCIÓN DE NOTAS DE TENDENCIA
+                # Si la nota anterior era una nota de tendencia, debe resolver
+                if self.pending_tendency_resolution is not None:
+                    degree = self._resolve_tendency_tone(self.pending_tendency_resolution)
+                    self.pending_tendency_resolution = None
+                    function = NoteFunction.PASSING
                 # Usar Markov si está disponible
-                if self.markov_model:
+                elif self.markov_model:
                     # Obtener sugerencia de intervalo desde Markov (en semitonos)
                     fallback_intervals = [-1, 1, 2, -2]
                     suggested_semitones = self.markov_model.suggest_interval(
@@ -169,14 +176,19 @@ class PitchSelector:
                         new_degree += 7
 
                     degree = new_degree
+                    function = NoteFunction.PASSING
                 else:
                     # Lógica tradicional (sin Markov)
                     if random.random() < 0.5:
                         degree = last_degree + 1 if last_degree < 7 else 1
                     else:
                         degree = last_degree - 1 if last_degree > 1 else 7
+                    function = NoteFunction.PASSING
 
-                function = NoteFunction.PASSING
+                # Verificar si la nueva nota es una nota de tendencia
+                # y marcar para resolución en la siguiente nota
+                if self.scale_manager.is_tendency_tone(degree):
+                    self.pending_tendency_resolution = degree
             else:
                 degree = 2
                 function = NoteFunction.PASSING
@@ -356,6 +368,30 @@ class PitchSelector:
     def set_last_was_rest(self, value: bool):
         """Actualiza el estado de si el último evento fue silencio."""
         self.last_was_rest = value
+
+    def _resolve_tendency_tone(self, tendency_degree: int) -> int:
+        """
+        Resuelve una nota de tendencia según la teoría clásica.
+
+        Resoluciones:
+        - Grado 7 (sensible) → Grado 1 (tónica) - ASCENDENTE
+        - Grado 4 → Grado 3 - DESCENDENTE
+
+        Args:
+            tendency_degree: Grado de la nota de tendencia (7 o 4)
+
+        Returns:
+            Grado de resolución
+        """
+        if tendency_degree == 7:
+            # La sensible resuelve HACIA ARRIBA a la tónica
+            return 1
+        elif tendency_degree == 4:
+            # El cuarto grado resuelve HACIA ABAJO a la mediante
+            return 3
+        else:
+            # Para otros grados, movimiento por grado conjunto descendente
+            return tendency_degree - 1 if tendency_degree > 1 else 7
 
     def _semitones_to_degree_movement(self, semitones: int) -> int:
         """

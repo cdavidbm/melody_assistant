@@ -66,7 +66,7 @@ class RhythmGenerator:
 
         for beat_index in range(num_beats):
             is_strong_beat = beat_index in self.strong_beats
-            sixteenths_per_beat = 16 // self.meter_tuple[1]
+            sixteenths_per_beat = self._get_sixteenths_per_beat()
             beat_durations = self._create_beat_subdivision(
                 sixteenths_per_beat, is_strong_beat, beat_index
             )
@@ -75,6 +75,25 @@ class RhythmGenerator:
         return RhythmicPattern(
             durations=durations, strong_beat_indices=self.strong_beats
         )
+
+    def _get_sixteenths_per_beat(self) -> int:
+        """
+        Calcula el número de semicorcheas por pulso según el compás.
+
+        Compases simples (4/4, 3/4, 2/4):
+            Pulso = negra = 4 semicorcheas
+
+        Compases compuestos (6/8, 9/8, 12/8):
+            Pulso = negra con puntillo = 6 semicorcheas
+        """
+        num, denom = self.meter_tuple
+
+        # Compases compuestos: el pulso es la negra con puntillo
+        if denom == 8 and num in [6, 9, 12]:
+            return 6  # Negra con puntillo = 3 corcheas = 6 semicorcheas
+
+        # Compases simples: el pulso es la figura del denominador
+        return 16 // denom
 
     def _create_beat_subdivision(
         self, sixteenths: int, is_strong: bool, beat_index: int

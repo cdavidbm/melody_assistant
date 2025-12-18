@@ -41,18 +41,20 @@ class HarmonyManager:
                 7: "diminished",
             }
         else:
+            # Modo menor: usar V mayor para cadencias fuertes (práctica común)
+            # En la teoría clásica, V siempre se altera a mayor para cadencias
             self.chord_qualities = {
                 1: "minor",
                 2: "diminished",
                 3: "major",
-                4: "minor",
-                5: "minor",
+                4: "minor",      # iv natural, pero IV mayor disponible en cadencias
+                5: "major",      # V mayor (práctica común, incluso en menor natural)
                 6: "major",
-                7: "major",
+                7: "diminished", # vii° (sensible) para conducción a tónica
             }
+            # Menor armónica ya tiene V mayor y vii° naturalmente
             if self.mode == "harmonic_minor":
-                self.chord_qualities[5] = "major"
-                self.chord_qualities[7] = "diminished"
+                pass  # Ya configurado correctamente arriba
 
         self.tension_levels = {
             1: 0.0,
@@ -118,6 +120,11 @@ class HarmonyManager:
         """
         Crea una progresión armónica implícita para un período.
 
+        Sigue la estructura clásica:
+        - Antecedente: termina en V (semicadencia)
+        - Consecuente: termina en I (cadencia auténtica)
+        - Períodos completos siempre terminan en I
+
         Args:
             num_measures: Número de compases del período
 
@@ -127,31 +134,78 @@ class HarmonyManager:
         progression = []
 
         # Generar progresión según longitud
-        if num_measures <= 2:
-            degrees = [1, 5] if num_measures == 2 else [1]
-        elif num_measures <= 4:
-            degrees = [1, 1, 4, 5] if num_measures == 4 else [1, 4, 5]
+        if num_measures == 1:
+            degrees = [1]
+        elif num_measures == 2:
+            # Período mínimo: I → I (reposo)
+            degrees = [1, 1]
+        elif num_measures == 3:
+            # I → IV → I (subdominante como tensión intermedia)
+            degrees = [1, 4, 1]
+        elif num_measures == 4:
+            # Antecedente corto: I → I → IV → I
+            # (No hay semicadencia porque no hay consecuente)
+            degrees = [1, 1, 4, 1]
         elif num_measures <= 8:
-            antecedent = [1, 1, 4, 5]
-            consequent = [1, 1, 4, 5] if num_measures == 8 else [1, 4, 5]
-            consequent[-1] = 1
-            degrees = antecedent + consequent[: num_measures - 4]
+            # Período clásico: antecedente (termina V) + consecuente (termina I)
+            midpoint = num_measures // 2
+            # Antecedente: I...V
+            antecedent = [1] * (midpoint - 1) + [5]
+            if midpoint >= 3:
+                antecedent[-2] = 4  # Subdominante antes de dominante
+            # Consecuente: I...I
+            consequent_len = num_measures - midpoint
+            consequent = [1] * (consequent_len - 1) + [1]
+            if consequent_len >= 3:
+                consequent[-2] = 5  # V → I para cadencia auténtica
+            if consequent_len >= 4:
+                consequent[-3] = 4  # IV → V → I
+            degrees = antecedent + consequent
         else:
-            num_periods = (num_measures + 7) // 8
+            # Períodos largos: múltiples frases de 4 compases
+            num_phrases = (num_measures + 3) // 4
             degrees = []
-            for period_idx in range(num_periods):
-                if period_idx < num_periods - 1:
-                    degrees.extend([1, 1, 4, 5, 1, 1, 4, 5])
-                else:
-                    remaining = num_measures - len(degrees)
-                    if remaining >= 8:
-                        degrees.extend([1, 1, 4, 5, 1, 1, 4, 1])
-                    elif remaining >= 4:
-                        degrees.extend([1, 1, 4, 5])
-                        degrees.extend([1] * (remaining - 4))
+            for phrase_idx in range(num_phrases):
+                remaining = num_measures - len(degrees)
+                if remaining <= 0:
+                    break
+
+                is_last_phrase = phrase_idx == num_phrases - 1
+                phrase_len = min(4, remaining)
+
+                if is_last_phrase:
+                    # Última frase: termina en I (cadencia auténtica)
+                    if phrase_len == 4:
+                        phrase = [1, 1, 5, 1]  # I → I → V → I
+                    elif phrase_len == 3:
+                        phrase = [1, 5, 1]
+                    elif phrase_len == 2:
+                        phrase = [5, 1]
                     else:
-                        degrees.extend([1] * remaining)
+                        phrase = [1]
+                elif phrase_idx == num_phrases // 2 - 1:
+                    # Mitad del período: semicadencia (termina en V)
+                    if phrase_len == 4:
+                        phrase = [1, 1, 4, 5]
+                    elif phrase_len == 3:
+                        phrase = [1, 4, 5]
+                    else:
+                        phrase = [1, 5][:phrase_len]
+                else:
+                    # Frases intermedias: progresión normal
+                    if phrase_len == 4:
+                        phrase = [1, 1, 4, 1]
+                    elif phrase_len == 3:
+                        phrase = [1, 4, 1]
+                    else:
+                        phrase = [1] * phrase_len
+
+                degrees.extend(phrase)
+
             degrees = degrees[:num_measures]
+
+        # GARANTÍA: El período siempre termina en I (tónica)
+        if degrees:
             degrees[-1] = 1
 
         # Convertir a HarmonicFunction objects

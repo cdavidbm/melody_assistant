@@ -453,21 +453,45 @@ class PeriodGenerator:
         self, measure_index, beat_index_int, is_strong, rhythm_pattern,
         note_index, is_cadence, is_near_end, cadence_type
     ) -> str:
-        """Obtiene el pitch para una nota según el contexto."""
+        """
+        Obtiene el pitch para una nota según el contexto.
+
+        Cadencias según teoría clásica:
+        - Auténtica (V→I): La melodía usa notas del acorde de dominante (5, 7, 2)
+          resolviendo a la tónica. Típicamente: 5→1 o 2→1 (descendente) o 7→1 (ascendente)
+        - Semicadencia (→V): La melodía termina en nota del acorde de dominante
+        """
         if is_cadence and is_near_end:
-            is_penultimate = note_index == len(rhythm_pattern.durations) - 2
-            is_final = note_index == len(rhythm_pattern.durations) - 1
+            num_notes = len(rhythm_pattern.durations)
+            is_antepenultimate = note_index == num_notes - 3
+            is_penultimate = note_index == num_notes - 2
+            is_final = note_index == num_notes - 1
 
             if cadence_type == "authentic":
-                if is_penultimate:
-                    return self.scale_manager.get_pitch_by_degree(7)
-                elif is_final:
-                    return self.scale_manager.get_pitch_by_degree(1)
-            elif cadence_type == "half":
-                if is_final:
+                # Cadencia auténtica: V → I
+                # Gesto melódico típico: 5→2→1 o 4→7→1 o 5→5→1
+                if is_antepenultimate and num_notes >= 3:
+                    # Tercera nota desde el final: subdominante o dominante
                     return self.scale_manager.get_pitch_by_degree(5)
                 elif is_penultimate:
+                    # Penúltima: nota de dominante que resuelve a tónica
+                    # Usar 2 (supertónica) para resolución descendente 2→1
+                    return self.scale_manager.get_pitch_by_degree(2)
+                elif is_final:
+                    # Final: tónica
+                    return self.scale_manager.get_pitch_by_degree(1)
+
+            elif cadence_type == "half":
+                # Semicadencia: termina en V
+                # Gesto melódico típico: IV→V (4→5)
+                if is_antepenultimate and num_notes >= 3:
+                    return self.scale_manager.get_pitch_by_degree(1)
+                elif is_penultimate:
+                    # Penúltima: subdominante
                     return self.scale_manager.get_pitch_by_degree(4)
+                elif is_final:
+                    # Final: dominante
+                    return self.scale_manager.get_pitch_by_degree(5)
 
         note_pitch, _ = self.pitch_selector.select_melodic_pitch(
             measure_index, beat_index_int, is_strong, rhythm_pattern, note_index

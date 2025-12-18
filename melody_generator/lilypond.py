@@ -291,6 +291,54 @@ class LilyPondFormatter:
         }
         return mode_mapping.get(mode_name, "major")
 
+    def is_advanced_mode(self) -> bool:
+        """
+        Verifica si el modo actual es un modo avanzado que LilyPond
+        no soporta nativamente.
+
+        Los modos avanzados incluyen:
+        - Modos de menor armónica (locrian_nat6, ionian_aug5, etc.)
+        - Modos de menor melódica (dorian_flat2, lydian_augmented, etc.)
+        - harmonic_minor, melodic_minor (armadura aproximada)
+        """
+        advanced_modes = {
+            "harmonic_minor", "melodic_minor",
+            "locrian_nat6", "ionian_aug5", "dorian_sharp4",
+            "phrygian_dominant", "lydian_sharp2", "superlocrian_bb7",
+            "dorian_flat2", "lydian_augmented", "lydian_dominant",
+            "mixolydian_flat6", "locrian_nat2", "altered",
+        }
+        return self.mode.lower() in advanced_modes
+
+    def get_mode_annotation(self) -> str:
+        """
+        Genera una anotación textual para modos avanzados.
+
+        Returns:
+            String con anotación de modo, o vacío si es modo estándar
+        """
+        if not self.is_advanced_mode():
+            return ""
+
+        mode_display_names = {
+            "harmonic_minor": "Harmonic Minor",
+            "melodic_minor": "Melodic Minor",
+            "locrian_nat6": "Locrian ♮6",
+            "ionian_aug5": "Ionian ♯5",
+            "dorian_sharp4": "Dorian ♯4",
+            "phrygian_dominant": "Phrygian Dominant",
+            "lydian_sharp2": "Lydian ♯2",
+            "superlocrian_bb7": "Superlocrian ♭♭7",
+            "dorian_flat2": "Dorian ♭2",
+            "lydian_augmented": "Lydian Augmented",
+            "lydian_dominant": "Lydian Dominant",
+            "mixolydian_flat6": "Mixolydian ♭6",
+            "locrian_nat2": "Locrian ♮2",
+            "altered": "Altered (Super Locrian)",
+        }
+        display_name = mode_display_names.get(self.mode.lower(), self.mode)
+        return f'% Mode: {display_name} (key signature is approximate)'
+
     def get_key_signature_string(self) -> str:
         """Retorna la armadura de clave como string LilyPond."""
         tonic = self.scale_manager.get_tonic()
@@ -362,6 +410,11 @@ class LilyPondFormatter:
         music_code = self.to_absolute_lilypond(staff)
 
         output = ""
+
+        # Anotación para modos avanzados (key signature aproximada)
+        mode_annotation = self.get_mode_annotation()
+        if mode_annotation:
+            output += f"{mode_annotation}\n\n"
 
         if title or composer:
             output += "\\header {\n"
