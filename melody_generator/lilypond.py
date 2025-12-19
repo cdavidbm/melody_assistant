@@ -521,3 +521,128 @@ class LilyPondFormatter:
         output += "}\n"
 
         return output
+
+    def format_output_polyphonic(
+        self,
+        melody_staff: abjad.Staff,
+        bass_staff: abjad.Staff,
+        title: Optional[str] = None,
+        composer: Optional[str] = None,
+    ) -> str:
+        """
+        Genera código LilyPond para melodía + bajo (dos pentagramas).
+
+        Crea un PianoStaff con clave de Sol arriba y clave de Fa abajo.
+
+        Args:
+            melody_staff: Staff con la melodía (clave de Sol)
+            bass_staff: Staff con el bajo (clave de Fa)
+            title: Título opcional
+            composer: Compositor opcional
+
+        Returns:
+            String con código LilyPond completo para dos pentagramas
+        """
+        key_sig_str = self.get_key_signature_string()
+        time_sig = f"\\time {self.meter_tuple[0]}/{self.meter_tuple[1]}"
+        strict_beaming = "\\set strictBeatBeaming = ##t"
+
+        # Comando \partial para anacrusis
+        partial_cmd = self.get_partial_command()
+
+        # Convertir staffs a código LilyPond
+        melody_code = self.to_absolute_lilypond(melody_staff)
+        bass_code = self.to_absolute_lilypond(bass_staff)
+
+        output = ""
+
+        # Anotación para modos avanzados
+        mode_annotation = self.get_mode_annotation()
+        if mode_annotation:
+            output += f"{mode_annotation}\n\n"
+
+        if title or composer:
+            output += "\\header {\n"
+            if title:
+                output += f'  title = "{title}"\n'
+            if composer:
+                output += f'  composer = "{composer}"\n'
+            output += "}\n\n"
+
+        output += "\\score {\n"
+        output += "  \\new PianoStaff <<\n"
+
+        # Staff superior (melodía, clave de Sol)
+        output += "    \\new Staff {\n"
+        output += f"      {time_sig}\n"
+        output += f"      {key_sig_str}\n"
+        output += '      \\clef "treble"\n'
+        output += f"      {strict_beaming}\n"
+        if partial_cmd:
+            output += f"      {partial_cmd}\n"
+
+        # Insertar contenido de la melodía
+        melody_lines = melody_code.split("\n")
+        for line in melody_lines:
+            if line.strip() and line.strip() not in ["{", "}"]:
+                output += f"      {line.strip()}\n"
+            elif line.strip() == "}":
+                pass  # No cerrar aquí todavía
+
+        output += "    }\n"
+
+        # Staff inferior (bajo, clave de Fa)
+        output += "    \\new Staff {\n"
+        output += f"      {time_sig}\n"
+        output += f"      {key_sig_str}\n"
+        output += '      \\clef "bass"\n'
+        output += f"      {strict_beaming}\n"
+        if partial_cmd:
+            output += f"      {partial_cmd}\n"
+
+        # Insertar contenido del bajo
+        bass_lines = bass_code.split("\n")
+        for line in bass_lines:
+            if line.strip() and line.strip() not in ["{", "}"]:
+                output += f"      {line.strip()}\n"
+            elif line.strip() == "}":
+                pass
+
+        output += "    }\n"
+
+        output += "  >>\n"  # Cerrar PianoStaff
+
+        output += "\n  \\layout {\n"
+        output += "    \\context {\n"
+        output += "      \\PianoStaff\n"
+        output += "      \\consists \"Span_bar_engraver\"\n"
+        output += "    }\n"
+        output += "  }\n"
+        output += "  \\midi {}\n"
+        output += "}\n"
+
+        return output
+
+    def staff_to_lily_content(self, staff: abjad.Staff) -> str:
+        """
+        Convierte un Staff a contenido LilyPond sin llaves externas.
+
+        Útil para combinar múltiples staffs en estructuras más complejas.
+
+        Args:
+            staff: Staff de Abjad
+
+        Returns:
+            String con las notas en formato LilyPond (sin {})
+        """
+        full_code = self.to_absolute_lilypond(staff)
+
+        # Remover llaves externas
+        lines = full_code.split("\n")
+        content_lines = []
+        for line in lines:
+            stripped = line.strip()
+            if stripped and stripped not in ["{", "}"]:
+                content_lines.append(stripped)
+
+        return " ".join(content_lines)

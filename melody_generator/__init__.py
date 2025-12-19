@@ -187,6 +187,18 @@ from .genetic import (
     MODE_CHARACTERISTIC_DEGREES,
 )
 
+# Bajo armónico (contrapunto fase 1)
+from .bass import (
+    BassGenerator,
+    BassConfig,
+    BassStyle,
+    VoiceLeadingChecker,
+    VoiceLeadingError,
+    MEASURE_UNIT_DURATION,
+    BEAT_UNIT_DURATION,
+    BEAT_DIVISION_DURATION,
+)
+
 # Constantes de teoría musical
 from .constants import (
     VOICE_LEADING_SCORES,
@@ -302,6 +314,15 @@ __all__ = [
     "MotifFitnessEvaluator",
     "VALID_DURATIONS",
     "MODE_CHARACTERISTIC_DEGREES",
+    # Bajo armónico
+    "BassGenerator",
+    "BassConfig",
+    "BassStyle",
+    "VoiceLeadingChecker",
+    "VoiceLeadingError",
+    "MEASURE_UNIT_DURATION",
+    "BEAT_UNIT_DURATION",
+    "BEAT_DIVISION_DURATION",
     # Utilidades
     "MarkovModelLoader",
     "AbjadMusic21Converter",

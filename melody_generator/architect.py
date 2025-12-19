@@ -37,6 +37,9 @@ from .modulation import ModulationGenerator
 from .development import MotivicDeveloper
 from .sequences import SequenceGenerator
 
+# Módulo de bajo armónico
+from .bass import BassGenerator, BassConfig, BassStyle, VoiceLeadingError
+
 # Módulos de memoria, validación y corrección
 from .memory import DecisionMemory
 from .musicxml import MusicXMLExporter
@@ -420,6 +423,144 @@ class MelodicArchitect:
         # Por ahora, retornar sin modificación
         # El pulido completo se implementará en una versión futura
         return staff
+
+    def generate_period_with_bass(
+        self,
+        bass_style: BassStyle = BassStyle.SIMPLE,
+        bass_config: Optional[BassConfig] = None,
+        return_staffs: bool = False,
+        verify_voice_leading: bool = True,
+    ) -> Union[str, Tuple[abjad.Staff, abjad.Staff, List[VoiceLeadingError]]]:
+        """
+        Genera un período musical con línea de bajo armónico.
+
+        Crea dos staffs:
+        - Melodía (clave de Sol) generada con los métodos existentes
+        - Bajo (clave de Fa) siguiendo la progresión armónica
+
+        El bajo puede ser:
+        - Simple: una nota por compás (unidad de compás)
+        - Alberti: arpegio del acorde
+        - Walking: movimiento diatónico por grados conjuntos
+
+        Args:
+            bass_style: Estilo de bajo (SIMPLE, ALBERTI, WALKING)
+            bass_config: Configuración opcional del bajo
+            return_staffs: Si True, retorna los staffs individuales
+            verify_voice_leading: Si True, verifica conducción de voces
+
+        Returns:
+            String con código LilyPond (PianoStaff),
+            o tupla (melody_staff, bass_staff, errors) si return_staffs=True
+        """
+        # Crear configuración de bajo si no se proporciona
+        if bass_config is None:
+            bass_config = BassConfig(style=bass_style)
+        else:
+            bass_config.style = bass_style
+
+        # Generar melodía
+        melody_staff = self.generate_period()
+
+        # Crear generador de bajo
+        bass_generator = BassGenerator(
+            scale_manager=self.scale_manager,
+            harmony_manager=self.harmony_manager,
+            meter_tuple=self.meter_tuple,
+            config=bass_config,
+        )
+
+        # Obtener progresión armónica
+        harmonic_plan = self.harmony_manager.create_harmonic_progression(
+            self.num_measures
+        )
+
+        # Generar bajo
+        bass_staff = bass_generator.generate_bass_line(harmonic_plan)
+
+        # Verificar conducción de voces
+        voice_leading_errors = []
+        if verify_voice_leading:
+            voice_leading_errors = bass_generator.verify_voice_leading(
+                bass_staff, melody_staff
+            )
+
+        if return_staffs:
+            return melody_staff, bass_staff, voice_leading_errors
+
+        # Formatear como LilyPond polyphonic
+        lily_code = self.lilypond_formatter.format_output_polyphonic(
+            melody_staff=melody_staff,
+            bass_staff=bass_staff,
+        )
+
+        return lily_code
+
+    def generate_period_with_bass_and_expression(
+        self,
+        bass_style: BassStyle = BassStyle.SIMPLE,
+        bass_config: Optional[BassConfig] = None,
+        title: Optional[str] = None,
+        composer: Optional[str] = None,
+    ) -> str:
+        """
+        Genera período con bajo y expresiones aplicadas.
+
+        Combina generación de bajo con dinámicas, articulaciones, etc.
+
+        Args:
+            bass_style: Estilo de bajo
+            bass_config: Configuración del bajo
+            title: Título opcional
+            composer: Compositor opcional
+
+        Returns:
+            String con código LilyPond (PianoStaff con expresiones)
+        """
+        melody_staff, bass_staff, errors = self.generate_period_with_bass(
+            bass_style=bass_style,
+            bass_config=bass_config,
+            return_staffs=True,
+        )
+
+        # Aplicar expresiones a la melodía
+        melody_staff = self.apply_expression(melody_staff)
+
+        # Formatear como LilyPond polyphonic
+        lily_code = self.lilypond_formatter.format_output_polyphonic(
+            melody_staff=melody_staff,
+            bass_staff=bass_staff,
+            title=title,
+            composer=composer,
+        )
+
+        return lily_code
+
+    def format_as_lilypond_polyphonic(
+        self,
+        melody_staff: abjad.Staff,
+        bass_staff: abjad.Staff,
+        title: Optional[str] = None,
+        composer: Optional[str] = None,
+    ) -> str:
+        """
+        Formatea melodía y bajo existentes como código LilyPond.
+
+        Args:
+            melody_staff: Staff con la melodía
+            bass_staff: Staff con el bajo
+            title: Título opcional
+            composer: Compositor opcional
+
+        Returns:
+            String con código LilyPond (PianoStaff)
+        """
+        return self.lilypond_formatter.format_output_polyphonic(
+            melody_staff=melody_staff,
+            bass_staff=bass_staff,
+            title=title,
+            composer=composer,
+        )
 
     def generate_and_display(
         self,

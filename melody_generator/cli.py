@@ -24,6 +24,7 @@ from .config import (
     ExpressionConfig,
 )
 from .architect import MelodicArchitect
+from .bass import BassStyle, BassConfig
 from .validation import MusicValidator, ValidationReport, AutoCorrector
 
 
@@ -79,6 +80,13 @@ TOLERANCE_MAP = {
     "1": 0.85,  # Estricto
     "2": 0.65,  # Moderado
     "3": 0.45,  # Permisivo
+}
+
+# Mapeo de estilos de bajo
+BASS_STYLE_MAP = {
+    "1": "simple",
+    "2": "alberti",
+    "3": "walking",
 }
 
 
@@ -319,15 +327,89 @@ def get_generation_method() -> str:
     print("\nMétodo de generación:")
     print("1. Tradicional (sistema actual, cohesión rítmica)")
     print("2. Jerárquico (Motivo → Frase → Semifrase → Período)")
-    print("3. Genético (NUEVO: Evolución de motivos con DEAP)")
+    print("3. Genético (Evolución de motivos con DEAP)")
+    print("4. Con bajo armónico (NUEVO: Melodía + bajo en dos pentagramas)")
     generation_method_input = input("Seleccione método [1]: ").strip() or "1"
 
     method_map = {
         "1": "traditional",
         "2": "hierarchical",
         "3": "genetic",
+        "4": "with_bass",
     }
     return method_map.get(generation_method_input, "traditional")
+
+
+def get_bass_config() -> tuple:
+    """
+    Obtiene la configuración de bajo del usuario.
+
+    Returns:
+        Tupla (bass_style, bass_config)
+    """
+    print("\n=== CONFIGURACIÓN DEL BAJO ARMÓNICO ===")
+    print()
+    print("El bajo proporciona fundamento armónico a la melodía,")
+    print("creando una textura de dos voces (contrapunto básico).")
+    print()
+
+    print("Estilo de bajo:")
+    print("1. Simple (una nota por compás - solemne, lento)")
+    print("2. Alberti (arpegio: raíz-quinta-tercera-quinta - clásico)")
+    print("3. Walking (movimiento diatónico por grados - más móvil)")
+    bass_style_input = input("Seleccione estilo [1]: ").strip() or "1"
+    bass_style_str = BASS_STYLE_MAP.get(bass_style_input, "simple")
+
+    style_map = {
+        "simple": BassStyle.SIMPLE,
+        "alberti": BassStyle.ALBERTI,
+        "walking": BassStyle.WALKING,
+    }
+    bass_style = style_map.get(bass_style_str, BassStyle.SIMPLE)
+
+    print("\nOctava del bajo:")
+    print("  2 = Muy grave (C2)")
+    print("  3 = Grave (C3) [Recomendado]")
+    print("  4 = Media (C4)")
+    octave_input = input("Octava [3]: ").strip() or "3"
+    try:
+        octave = max(1, min(5, int(octave_input)))
+    except ValueError:
+        octave = 3
+
+    print("\nPreferencia de nota del acorde:")
+    print("La nota del bajo puede ser raíz, tercera o quinta del acorde.")
+    print("(Por defecto: 70% raíz, 20% quinta, 10% tercera)")
+
+    use_default = input("¿Usar preferencias por defecto? (s/n) [s]: ").strip().lower() or "s"
+
+    if use_default == "s":
+        bass_config = BassConfig(
+            style=bass_style,
+            octave=octave,
+        )
+    else:
+        root_pref_input = input("Preferencia de raíz (0.0-1.0) [0.70]: ").strip() or "0.70"
+        fifth_pref_input = input("Preferencia de quinta (0.0-1.0) [0.20]: ").strip() or "0.20"
+
+        try:
+            root_pref = float(root_pref_input)
+            fifth_pref = float(fifth_pref_input)
+            third_pref = max(0, 1.0 - root_pref - fifth_pref)
+        except ValueError:
+            root_pref, fifth_pref, third_pref = 0.70, 0.20, 0.10
+
+        bass_config = BassConfig(
+            style=bass_style,
+            octave=octave,
+            root_preference=root_pref,
+            fifth_preference=fifth_pref,
+            third_preference=third_pref,
+        )
+
+    print(f"\n✓ Configuración: {bass_style_str}, octava {octave}")
+
+    return bass_style, bass_config
 
 
 def get_genetic_config() -> dict:
@@ -465,19 +547,22 @@ def run_generation_loop(
     generation_method: str = "traditional",
     expression_config: Optional[ExpressionConfig] = None,
     genetic_params: Optional[dict] = None,
-) -> Tuple[Optional[abjad.Staff], Optional[ValidationReport]]:
+    bass_params: Optional[dict] = None,
+) -> Tuple[Optional[abjad.Staff], Optional[ValidationReport], Optional[str]]:
     """
     Ejecuta el ciclo de generación con validación.
 
     Args:
         config: Configuración de generación
         tolerance: Tolerancia de validación
-        generation_method: "traditional", "hierarchical", o "genetic"
+        generation_method: "traditional", "hierarchical", "genetic", o "with_bass"
         expression_config: Configuración de expresión
         genetic_params: Parámetros genéticos si method="genetic"
+        bass_params: Parámetros de bajo si method="with_bass"
 
     Returns:
-        Tupla (staff, validation_report) o (None, None) si se cancela
+        Tupla (staff, validation_report, lilypond_code) o (None, None, None) si se cancela
+        lilypond_code solo se devuelve si generation_method="with_bass"
     """
     print("\n" + "=" * 70)
     print("Generando melodía con validación automática...")
@@ -490,6 +575,7 @@ def run_generation_loop(
 
     staff = None
     validation_report = None
+    lilypond_code = None  # Solo para generación con bajo
     attempt = 0
 
     while True:
@@ -517,6 +603,21 @@ def run_generation_loop(
             print("Generando con método JERÁRQUICO...")
             result = architect.generate_period_hierarchical()
             staff = result[0] if isinstance(result, tuple) else result
+        elif generation_method == "with_bass":
+            print("Generando con BAJO ARMÓNICO (melodía + bajo)...")
+            bass_prms = bass_params or {}
+            bass_style = bass_prms.get("bass_style", BassStyle.SIMPLE)
+            bass_cfg = bass_prms.get("bass_config", None)
+
+            # Generar melodía con bajo
+            lilypond_code = architect.generate_period_with_bass(
+                bass_style=bass_style,
+                bass_config=bass_cfg,
+                return_staffs=False,
+            )
+            # También generar staff solo para validación
+            staff = architect.generate_period()
+            print("  ✓ Bajo generado con verificación de conducción de voces")
         else:
             print("Generando con método TRADICIONAL...")
             staff = architect.generate_period()
@@ -608,9 +709,9 @@ def run_generation_loop(
 
         else:
             print("\n❌ Generación cancelada.")
-            return None, None
+            return None, None, None
 
-    return staff, validation_report
+    return staff, validation_report, lilypond_code
 
 
 def save_output(
@@ -688,6 +789,15 @@ def main():
         if generation_method == "genetic":
             genetic_params = get_genetic_config()
 
+        # Obtener configuración de bajo si el método es con bajo
+        bass_params = None
+        if generation_method == "with_bass":
+            bass_style, bass_config = get_bass_config()
+            bass_params = {
+                "bass_style": bass_style,
+                "bass_config": bass_config,
+            }
+
         tolerance = get_validation_tolerance()
         output_config = get_output_config()
 
@@ -702,12 +812,13 @@ def main():
         )
 
         # Ejecutar generación
-        staff, validation_report = run_generation_loop(
+        staff, validation_report, bass_lilypond = run_generation_loop(
             config=config,
             tolerance=tolerance,
             generation_method=generation_method,
             expression_config=expression_config,
             genetic_params=genetic_params,
+            bass_params=bass_params,
         )
 
         if staff is None:
@@ -715,11 +826,25 @@ def main():
 
         # Generar código LilyPond
         architect = MelodicArchitect(config=config, expression_config=expression_config)
-        lilypond_code = architect.format_as_lilypond(
-            staff,
-            title=output_config.title,
-            composer=output_config.composer,
-        )
+
+        # Si ya tenemos código LilyPond de generación con bajo, añadir header
+        if bass_lilypond is not None:
+            # Insertar título y compositor en el código existente
+            header_code = ""
+            if output_config.title or output_config.composer:
+                header_code = "\\header {\n"
+                if output_config.title:
+                    header_code += f'  title = "{output_config.title}"\n'
+                if output_config.composer:
+                    header_code += f'  composer = "{output_config.composer}"\n'
+                header_code += "}\n\n"
+            lilypond_code = header_code + bass_lilypond
+        else:
+            lilypond_code = architect.format_as_lilypond(
+                staff,
+                title=output_config.title,
+                composer=output_config.composer,
+            )
 
         # Mostrar resultado
         print("\n" + "=" * 70)
