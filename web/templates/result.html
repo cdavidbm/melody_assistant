@@ -2,6 +2,33 @@
 <!-- Score tab -->
 <div class="tab-pane active" id="tab-score">
     <div class="result-container">
+        {% if ai_interpreted %}
+        <div class="ai-interpretation-box">
+            <div class="ai-header">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
+                    <path d="M8.5 8.5v.01"/>
+                    <path d="M16 15.5v.01"/>
+                    <path d="M12 12v.01"/>
+                </svg>
+                <span>Interpretado por IA</span>
+            </div>
+            <div class="ai-prompt">
+                <strong>Tu descripcion:</strong> "{{ original_prompt }}"
+            </div>
+            <div class="ai-params">
+                {% if interpreted_params %}
+                <span class="ai-param"><strong>Tonalidad:</strong> {{ interpreted_params.key }}</span>
+                <span class="ai-param"><strong>Compas:</strong> {{ interpreted_params.meter_num }}/{{ interpreted_params.meter_den }}</span>
+                <span class="ai-param"><strong>Compases:</strong> {{ interpreted_params.num_measures }}</span>
+                {% if interpreted_params.add_bass %}<span class="ai-param"><strong>Bajo:</strong> {{ interpreted_params.bass_style }}</span>{% endif %}
+                {% if interpreted_params.use_markov %}<span class="ai-param"><strong>Estilo:</strong> {{ interpreted_params.composer }}</span>{% endif %}
+                {% if interpreted_params.ornamentation_style != 'none' %}<span class="ai-param"><strong>Ornamentos:</strong> {{ interpreted_params.ornamentation_style }}</span>{% endif %}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
         <div class="result-meta">
             <span class="meta-item"><strong>Tonalidad:</strong> {{ key_name }} {{ mode }}</span>
             <span class="meta-item"><strong>Compas:</strong> {{ meter }}</span>

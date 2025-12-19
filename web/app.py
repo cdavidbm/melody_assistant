@@ -3,12 +3,23 @@ Flask application for the melody generator web interface.
 """
 
 import os
+import json
 import random
 import subprocess
 from datetime import datetime
 from pathlib import Path
 
 from flask import Flask, render_template, request, send_from_directory
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv(Path(__file__).parent.parent / ".env")
+
+# Gemini API
+import google.generativeai as genai
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 # Add parent directory to path for imports
 import sys
@@ -501,6 +512,345 @@ def generate_develop_mode():
             mode=display_mode,
             meter=f"{meter_num}/{meter_den}",
             num_measures=num_measures,
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return render_template(
+            "result.html",
+            success=False,
+            error=str(e),
+        )
+
+
+def interpret_prompt_with_gemini(user_prompt: str) -> dict:
+    """
+    Uses Gemini to interpret a natural language prompt and extract musical parameters.
+
+    Returns a dict with form parameters that can be used to generate a melody.
+    """
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY no está configurada")
+
+    # System prompt for Gemini
+    system_prompt = """Eres un asistente experto en teoría musical. Tu tarea es interpretar descripciones de melodías en lenguaje natural y extraer parámetros musicales específicos.
+
+DEBES responder ÚNICAMENTE con un objeto JSON válido, sin explicaciones adicionales ni markdown.
+
+Los parámetros que debes extraer son:
+
+1. "key" (string): Tonalidad. Valores posibles: "C", "D", "E", "F", "G", "A", "B", "Db", "Eb", "Gb", "Ab", "Bb", "C#", "F#"
+   - "Do mayor" = "C", "Re mayor" = "D", "La menor" = "A", etc.
+
+2. "mode" (string): Modo/escala como número. Valores:
+   - "1" = Mayor/Jónico
+   - "2" = Dórico
+   - "3" = Frigio
+   - "4" = Lidio
+   - "5" = Mixolidio
+   - "6" = Menor/Eólico
+   - "8" = Menor armónica
+   - "9" = Menor melódica
+   - "13" = Frigio dominante (flamenco)
+
+3. "meter_num" (int): Numerador del compás. Ej: 4 para 4/4, 3 para 3/4
+4. "meter_den" (int): Denominador del compás. Ej: 4 para 4/4, 8 para 6/8
+   - Vals = 3/4
+   - Marcha = 4/4 o 2/4
+   - Jiga = 6/8
+
+5. "num_measures" (int): Número de compases. Valores: 4, 8, 12, 16, 24, 32
+
+6. "complexity" (int): Complejidad rítmica. 1=simple, 2=moderado, 3=complejo
+
+7. "impulse" (string): Tipo de inicio. "tetic" (tiempo fuerte), "anacroustic" (anacrusa), "acephalous" (después del tiempo)
+
+8. "use_rests" (bool): true si debe incluir silencios/respiraciones
+
+9. "add_bass" (bool): true si el usuario quiere línea de bajo
+
+10. "bass_style" (string): Si add_bass=true. "simple", "alberti", "walking", "contrapunto"
+
+11. "use_markov" (bool): true para estilo más natural/idiomático
+
+12. "composer" (string): Si use_markov=true. "bach", "mozart", "beethoven", "combined"
+
+13. "ornamentation_style" (string): "none", "minimal", "classical", "baroque", "romantic"
+
+14. "use_dynamics" (bool): true para incluir dinámicas
+
+15. "use_articulations" (bool): true para incluir articulaciones
+
+16. "generation_method" (string): "traditional", "hierarchical", "genetic"
+
+17. "climax_position" (float): Posición del clímax entre 0.3 y 0.8
+
+18. "variation_freedom" (int): 1=estricto, 2=moderado, 3=libre
+
+Ejemplo de respuesta para "Una melodía alegre en Re mayor, vals, 16 compases, con ornamentos barrocos":
+{"key": "D", "mode": "1", "meter_num": 3, "meter_den": 4, "num_measures": 16, "complexity": 2, "impulse": "tetic", "use_rests": true, "add_bass": false, "bass_style": "simple", "use_markov": false, "composer": "bach", "ornamentation_style": "baroque", "use_dynamics": true, "use_articulations": true, "generation_method": "traditional", "climax_position": 0.65, "variation_freedom": 2}
+
+IMPORTANTE:
+- Si algo no se especifica, usa valores por defecto razonables
+- Interpreta sinónimos: "triste" = menor, "alegre" = mayor, "rápido" = complexity 3
+- "con bajo" = add_bass: true
+- "estilo Bach/barroco" = use_markov: true, composer: "bach"
+- Responde SOLO con el JSON, nada más"""
+
+    try:
+        # Try multiple models in order of preference
+        model_names = ['gemini-2.0-flash-lite', 'gemini-2.0-flash', 'gemma-3-4b-it']
+        model = None
+        for model_name in model_names:
+            try:
+                model = genai.GenerativeModel(model_name)
+                break
+            except Exception:
+                continue
+        if model is None:
+            raise ValueError("No se pudo inicializar ningún modelo de IA")
+
+        response = model.generate_content(
+            f"{system_prompt}\n\nDescripción del usuario: {user_prompt}",
+            generation_config=genai.types.GenerationConfig(
+                temperature=0.3,
+                max_output_tokens=500,
+            )
+        )
+
+        # Parse the JSON response
+        response_text = response.text.strip()
+
+        # Remove markdown code blocks if present
+        if response_text.startswith("```"):
+            lines = response_text.split("\n")
+            response_text = "\n".join(lines[1:-1])
+
+        params = json.loads(response_text)
+
+        # Ensure required fields have defaults
+        defaults = {
+            "key": "C",
+            "mode": "1",
+            "meter_num": 4,
+            "meter_den": 4,
+            "num_measures": 8,
+            "complexity": 2,
+            "impulse": "tetic",
+            "use_rests": True,
+            "add_bass": False,
+            "bass_style": "simple",
+            "use_markov": False,
+            "composer": "bach",
+            "ornamentation_style": "none",
+            "use_dynamics": True,
+            "use_articulations": True,
+            "generation_method": "traditional",
+            "climax_position": 0.65,
+            "variation_freedom": 2,
+        }
+
+        for key, default in defaults.items():
+            if key not in params:
+                params[key] = default
+
+        return params
+
+    except json.JSONDecodeError as e:
+        print(f"Error parsing Gemini response: {e}")
+        print(f"Response was: {response_text}")
+        raise ValueError(f"No se pudo interpretar la respuesta de la IA: {e}")
+    except Exception as e:
+        print(f"Gemini API error: {e}")
+        raise ValueError(f"Error al comunicarse con la IA: {e}")
+
+
+@app.route("/generate-from-prompt", methods=["POST"])
+def generate_from_prompt():
+    """Generate a melody from a natural language prompt using Gemini."""
+    try:
+        user_prompt = request.form.get("user_prompt", "").strip()
+        title = request.form.get("prompt_title", "Melodía Generada")
+        score_composer = request.form.get("prompt_composer", "CompositorIA")
+
+        if not user_prompt:
+            raise ValueError("No se proporcionó ninguna descripción")
+
+        # Interpret the prompt with Gemini
+        params = interpret_prompt_with_gemini(user_prompt)
+
+        print(f"Interpreted params: {params}")
+
+        # Extract parameters
+        key_name = params.get("key", "C")
+        mode_num = params.get("mode", "1")
+        meter_num = int(params.get("meter_num", 4))
+        meter_den = int(params.get("meter_den", 4))
+        num_measures = int(params.get("num_measures", 8))
+        complexity = int(params.get("complexity", 2))
+        impulse = params.get("impulse", "tetic")
+        use_rests = params.get("use_rests", True)
+        add_bass = params.get("add_bass", False)
+        bass_style = params.get("bass_style", "simple")
+        use_markov = params.get("use_markov", False)
+        composer = params.get("composer", "bach")
+        ornamentation_style = params.get("ornamentation_style", "none")
+        use_dynamics = params.get("use_dynamics", True)
+        use_articulations = params.get("use_articulations", True)
+        generation_method = params.get("generation_method", "traditional")
+        climax_position = float(params.get("climax_position", 0.65))
+        variation_freedom = int(params.get("variation_freedom", 2))
+
+        # Map mode number to name
+        mode = MODE_MAP.get(mode_num, "major")
+
+        # Map impulse type
+        impulse_map = {
+            "tetic": ImpulseType.TETIC,
+            "anacroustic": ImpulseType.ANACROUSTIC,
+            "acephalous": ImpulseType.ACEPHALOUS,
+        }
+        impulse_type = impulse_map.get(impulse, ImpulseType.TETIC)
+
+        # Map ornamentation style
+        ornament_map = {
+            "none": OrnamentStyle.NONE,
+            "minimal": OrnamentStyle.MINIMAL,
+            "classical": OrnamentStyle.CLASSICAL,
+            "baroque": OrnamentStyle.BAROQUE,
+            "romantic": OrnamentStyle.ROMANTIC,
+        }
+        ornament_style = ornament_map.get(ornamentation_style, OrnamentStyle.NONE)
+
+        # Build configuration
+        config = GenerationConfig(
+            tonal=TonalConfig(key_name=key_name, mode=mode),
+            meter=MeterConfig(
+                meter_tuple=(meter_num, meter_den),
+                num_measures=num_measures,
+                impulse_type=impulse_type,
+            ),
+            rhythm=RhythmConfig(
+                complexity=complexity,
+                use_rests=use_rests,
+                rest_probability=0.15 if use_rests else 0.0,
+            ),
+            melody=MelodyConfig(
+                impulse_type=impulse_type,
+                climax_position=climax_position,
+                climax_intensity=1.3,
+                max_interval=6,
+                infraction_rate=0.05,
+                use_tenoris=False,
+            ),
+            motif=MotifConfig(
+                use_motivic_variations=True,
+                variation_probability=0.5,
+                variation_freedom=variation_freedom,
+            ),
+            markov=MarkovConfig(
+                enabled=use_markov,
+                composer=composer,
+                weight=0.4,
+                order=2,
+            ),
+            expression=ExpressionConfig(
+                ornamentation_style=ornament_style,
+                use_dynamics=use_dynamics,
+                use_articulations=use_articulations,
+            ),
+        )
+
+        # Create architect and generate
+        architect = MelodicArchitect(config=config)
+
+        # Generate based on method
+        if generation_method == "genetic":
+            from melody_generator.genetic import GeneticMelodyEvolver, GeneticConfig
+            genetic_config = GeneticConfig(
+                population_size=30,
+                generations=15,
+            )
+            evolver = GeneticMelodyEvolver(architect, genetic_config)
+            staff = evolver.evolve()
+        elif generation_method == "hierarchical":
+            staff = architect.generate_period_hierarchical()
+        else:
+            staff = architect.generate_period()
+
+        # Generate bass if requested
+        bass_staff = None
+        if add_bass:
+            bass_style_map = {
+                "simple": BassStyle.SIMPLE,
+                "alberti": BassStyle.ALBERTI,
+                "walking": BassStyle.WALKING,
+                "contrapunto": BassStyle.CONTRAPUNTO,
+            }
+            bass_config = BassConfig(
+                style=bass_style_map.get(bass_style, BassStyle.SIMPLE),
+                octave=3,
+            )
+            bass_staff = architect.generate_bass(staff, bass_config)
+
+        # Format output
+        if bass_staff:
+            lilypond_code = architect.format_as_lilypond_polyphonic(
+                melody_staff=staff,
+                bass_staff=bass_staff,
+                title=title,
+                composer=score_composer,
+            )
+        else:
+            lilypond_code = architect.format_as_lilypond(
+                staff,
+                title=title,
+                composer=score_composer,
+            )
+
+        # Save files
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = f"prompt_{key_name}_{mode}_{timestamp}"
+        ly_filepath = OUTPUT_DIR / f"{base_filename}.ly"
+
+        with open(ly_filepath, "w", encoding="utf-8") as f:
+            f.write(lilypond_code)
+
+        # Run LilyPond
+        pdf_path = None
+        midi_path = None
+        lilypond_error = None
+
+        try:
+            result = subprocess.run(
+                ["lilypond", "-o", str(OUTPUT_DIR / base_filename), str(ly_filepath)],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode == 0:
+                pdf_path = f"{base_filename}.pdf"
+                midi_path = f"{base_filename}.midi"
+            else:
+                lilypond_error = result.stderr
+        except Exception as e:
+            lilypond_error = str(e)
+
+        return render_template(
+            "result.html",
+            success=True,
+            lilypond_code=lilypond_code,
+            pdf_path=pdf_path,
+            midi_path=midi_path,
+            lilypond_error=lilypond_error,
+            key_name=key_name,
+            mode=mode,
+            meter=f"{meter_num}/{meter_den}",
+            num_measures=num_measures,
+            ai_interpreted=True,
+            interpreted_params=params,
+            original_prompt=user_prompt,
         )
 
     except Exception as e:

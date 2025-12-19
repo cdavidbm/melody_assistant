@@ -25,7 +25,7 @@
                     <path d="m8 6 4 4"/>
                     <circle cx="12" cy="18" r="4"/>
                 </svg>
-                Generacion Espontanea
+                Espontanea
             </button>
             <button type="button" class="mode-tab" data-mode="develop">
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -34,7 +34,16 @@
                     <path d="M8 21h8"/>
                     <path d="M3 7h18"/>
                 </svg>
-                Desarrollar Idea
+                Desarrollar
+            </button>
+            <button type="button" class="mode-tab" data-mode="prompt">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    <path d="M8 10h.01"/>
+                    <path d="M12 10h.01"/>
+                    <path d="M16 10h.01"/>
+                </svg>
+                Prompt IA
             </button>
         </div>
 
@@ -652,6 +661,124 @@
                 </div>
             </form>
         </div>
+
+        <!-- ===== MODE 3: Prompt IA ===== -->
+        <div class="mode-content" id="mode-prompt">
+            <form id="prompt-form" hx-post="/generate-from-prompt" hx-target="#result-container" hx-swap="innerHTML">
+                <input type="hidden" name="generation_mode" value="prompt">
+
+                <div class="section-card">
+                    <div class="mode-info prompt-info">
+                        <svg class="mode-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
+                            <path d="M8.5 8.5v.01"/>
+                            <path d="M16 15.5v.01"/>
+                            <path d="M12 12v.01"/>
+                            <path d="M11 17v.01"/>
+                            <path d="M7 14v.01"/>
+                        </svg>
+                        <div class="mode-info-text">
+                            <strong>Describe tu melodia en lenguaje natural.</strong> Usa inteligencia artificial para interpretar tu descripcion y generar una melodia que coincida con tu vision. Puedes describir el caracter, estilo, emocion o cualquier aspecto musical.
+                        </div>
+                    </div>
+
+                    <div class="prompt-editor">
+                        <div class="editor-header">
+                            <svg class="editor-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                            </svg>
+                            <div>
+                                <div class="editor-title">Tu Descripcion</div>
+                                <div class="editor-subtitle">Escribe lo que imaginas</div>
+                            </div>
+                        </div>
+
+                        <div class="editor-container">
+                            <textarea
+                                name="user_prompt"
+                                id="user_prompt"
+                                class="editor-textarea prompt-textarea"
+                                placeholder="Ejemplo: Quiero una melodia alegre en Re mayor, con ritmo de vals (3/4), que tenga un caracter danzante y use ornamentos barrocos. Debe tener 16 compases y terminar con una cadencia clara."
+                                required></textarea>
+                        </div>
+
+                        <div class="editor-help">
+                            <div class="help-title">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="M12 16v-4"/>
+                                    <path d="M12 8h.01"/>
+                                </svg>
+                                Sugerencias de que incluir
+                            </div>
+                            <div class="prompt-suggestions">
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">alegre</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">melancolico</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">energico</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">tranquilo</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">misterioso</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">vals</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">marcha</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">barroco</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">romantico</span>
+                                <span class="prompt-tag" onclick="insertPromptTag(this)">con bajo</span>
+                            </div>
+                            <div class="help-note">
+                                Puedes mencionar: <strong>tonalidad</strong> (Do mayor, La menor), <strong>compas</strong> (4/4, 3/4, 6/8), <strong>caracter</strong> (alegre, triste), <strong>estilo</strong> (barroco, clasico), <strong>duracion</strong> (8 compases), <strong>ornamentos</strong>, <strong>dinamicas</strong>, etc.
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Preview of interpreted parameters -->
+                    <div class="prompt-preview" id="prompt-preview" style="display: none;">
+                        <div class="preview-header">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            <span>Parametros detectados</span>
+                        </div>
+                        <div class="preview-content" id="preview-content">
+                            <!-- Will be filled by JavaScript -->
+                        </div>
+                    </div>
+
+                    <!-- Additional options -->
+                    <div class="prompt-options">
+                        <span class="section-title">Opciones adicionales</span>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Titulo</label>
+                                <input type="text" name="prompt_title" class="form-input" value="Melodia Generada" placeholder="Titulo de la pieza">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Compositor</label>
+                                <input type="text" name="prompt_composer" class="form-input" value="CompositorIA" placeholder="Tu nombre">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Form Actions -->
+                <div class="form-actions">
+                    <button type="submit" class="btn-generate btn-ai">
+                        <span class="btn-text">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/>
+                                <path d="M8.5 8.5v.01"/>
+                                <path d="M16 15.5v.01"/>
+                                <path d="M12 12v.01"/>
+                            </svg>
+                            Generar con IA
+                        </span>
+                        <span class="btn-loading">
+                            <span class="spinner"></span>
+                            Interpretando...
+                        </span>
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- ===== Output Column ===== -->
@@ -762,6 +889,20 @@
             textarea.value = example;
         }
         textarea.focus();
+    }
+
+    // Insert prompt tag into prompt textarea
+    function insertPromptTag(element) {
+        const textarea = document.getElementById('user_prompt');
+        const tag = element.textContent;
+        if (textarea.value && !textarea.value.endsWith(' ')) {
+            textarea.value += ' ' + tag;
+        } else {
+            textarea.value += tag;
+        }
+        textarea.focus();
+        // Mark tag as used
+        element.classList.add('used');
     }
 
     // Output tab switching
