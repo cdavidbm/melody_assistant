@@ -70,6 +70,15 @@ class MarkovConfig:
     weight: float = 0.5  # 0.0-1.0
     order: int = 2  # 1-3
 
+    def __post_init__(self):
+        if not 0.0 <= self.weight <= 1.0:
+            raise ValueError(f"weight debe estar entre 0.0 y 1.0, recibido: {self.weight}")
+        if not 1 <= self.order <= 3:
+            raise ValueError(f"order debe estar entre 1 y 3, recibido: {self.order}")
+        valid_composers = {"bach", "mozart", "beethoven", "combined"}
+        if self.composer not in valid_composers:
+            raise ValueError(f"composer debe ser uno de {valid_composers}")
+
 
 @dataclass
 class ValidationConfig:
@@ -89,6 +98,57 @@ class OutputConfig:
     composer: str = "MelodicArchitect AI"
     auto_save: bool = True
     output_dir: str = "output"
+
+
+@dataclass
+class ExpressionConfig:
+    """Configuración de características expresivas."""
+
+    # Ornamentación
+    use_ornamentation: bool = False
+    ornamentation_style: str = "classical"  # baroque, classical, romantic, minimal
+
+    # Dinámicas
+    use_dynamics: bool = True
+    base_dynamic: str = "mf"
+    climax_dynamic: str = "f"
+
+    # Articulaciones
+    use_articulations: bool = True
+    articulation_style: str = "classical"
+
+    # Forma
+    use_form: bool = False
+    form_type: str = "binary"  # binary, ternary, rondo, theme_var
+
+    # Secuencias
+    use_sequences: bool = False
+
+    # Desarrollo motívico
+    use_development: bool = False
+    development_intensity: int = 2  # 1-3
+
+    def __post_init__(self):
+        valid_orn_styles = {"baroque", "classical", "romantic", "minimal"}
+        if self.ornamentation_style not in valid_orn_styles:
+            raise ValueError(f"ornamentation_style debe ser uno de {valid_orn_styles}")
+
+        valid_dynamics = {"ppp", "pp", "p", "mp", "mf", "f", "ff", "fff"}
+        if self.base_dynamic not in valid_dynamics:
+            raise ValueError(f"base_dynamic debe ser uno de {valid_dynamics}")
+        if self.climax_dynamic not in valid_dynamics:
+            raise ValueError(f"climax_dynamic debe ser uno de {valid_dynamics}")
+
+        valid_art_styles = {"baroque", "classical", "romantic"}
+        if self.articulation_style not in valid_art_styles:
+            raise ValueError(f"articulation_style debe ser uno de {valid_art_styles}")
+
+        valid_forms = {"binary", "ternary", "rondo", "theme_var"}
+        if self.form_type not in valid_forms:
+            raise ValueError(f"form_type debe ser uno de {valid_forms}")
+
+        if not 1 <= self.development_intensity <= 3:
+            raise ValueError(f"development_intensity debe estar entre 1 y 3")
 
 
 @dataclass

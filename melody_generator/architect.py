@@ -9,7 +9,7 @@ from dataclasses import dataclass
 import abjad
 
 from .models import ImpulseType, MelodicContour, Period
-from .config import GenerationConfig, TonalConfig, MeterConfig, RhythmConfig, MelodyConfig, MotifConfig, MarkovConfig
+from .config import GenerationConfig, TonalConfig, MeterConfig, RhythmConfig, MelodyConfig, MotifConfig, MarkovConfig, ExpressionConfig
 from .scales import ScaleManager
 from .harmony import HarmonyManager
 from .rhythm import RhythmGenerator
@@ -36,34 +36,6 @@ from .forms import FormGenerator, FormType, FormPlan
 from .modulation import ModulationGenerator
 from .development import MotivicDeveloper
 from .sequences import SequenceGenerator
-
-
-@dataclass
-class ExpressionConfig:
-    """Configuración de características expresivas."""
-    # Ornamentación
-    use_ornamentation: bool = False
-    ornamentation_style: str = "classical"  # baroque, classical, romantic, minimal
-
-    # Dinámicas
-    use_dynamics: bool = True
-    base_dynamic: str = "mf"
-    climax_dynamic: str = "f"
-
-    # Articulaciones
-    use_articulations: bool = True
-    articulation_style: str = "classical"
-
-    # Forma
-    use_form: bool = False
-    form_type: str = "binary"  # binary, ternary, rondo, theme_var
-
-    # Secuencias
-    use_sequences: bool = False
-
-    # Desarrollo motívico
-    use_development: bool = False
-    development_intensity: int = 2  # 1-3
 
 
 class MelodicArchitect:

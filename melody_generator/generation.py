@@ -558,12 +558,12 @@ class PeriodGenerator:
     def _create_rest(self, duration: Tuple[int, int]) -> abjad.Rest:
         """Crea un silencio con la duración especificada."""
         if duration[0] == 3:
+            # Duración con puntillo
             base_map = {8: 4, 16: 8, 4: 2, 32: 16, 2: 1}
             base_duration = base_map.get(duration[1], duration[1])
             rest_string = f"r{base_duration}."
-        elif duration[0] == 1:
-            rest_string = f"r{duration[1]}"
         else:
+            # Duración simple
             rest_string = f"r{duration[1]}"
 
         return abjad.Rest(rest_string)

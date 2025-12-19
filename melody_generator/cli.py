@@ -21,8 +21,9 @@ from .config import (
     MarkovConfig,
     ValidationConfig,
     OutputConfig,
+    ExpressionConfig,
 )
-from .architect import MelodicArchitect, ExpressionConfig
+from .architect import MelodicArchitect
 from .validation import MusicValidator, ValidationReport, AutoCorrector
 
 

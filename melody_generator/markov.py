@@ -211,7 +211,7 @@ class MarkovChain:
                 try:
                     # Intentar evaluar como tupla o número
                     next_state = eval(next_key)
-                except:
+                except (ValueError, SyntaxError, TypeError):
                     # Si falla, dejar como string
                     next_state = next_key
 
@@ -377,7 +377,7 @@ class MelodicMarkovModel(BaseMarkovModel):
                         semitones = int(intv.semitones)
                         if -12 <= semitones <= 12:
                             intervals.append(semitones)
-                    except:
+                    except Exception:
                         continue
 
                 if intervals:
@@ -1013,9 +1013,9 @@ class HarmonicContextMarkovModel(BaseMarkovModel):
                 # Intentar análisis armónico
                 try:
                     # Usar análisis de notas romanas si está disponible
-                    key = score.analyze('key')
-                    key_name = key.tonic.name if key else 'C'
-                except:
+                    key_result = score.analyze('key')
+                    key_name = key_result.tonic.name if key_result else 'C'
+                except Exception:
                     key_name = 'C'
 
                 # Extraer estados
@@ -1044,7 +1044,7 @@ class HarmonicContextMarkovModel(BaseMarkovModel):
                                     all_states.append(state)
 
                             prev_midi = midi
-                    except:
+                    except Exception:
                         continue
 
                 works_processed += 1
@@ -1052,7 +1052,7 @@ class HarmonicContextMarkovModel(BaseMarkovModel):
                 if (idx + 1) % 50 == 0:
                     print(f"    Procesadas {idx + 1}/{len(results)} obras...")
 
-            except:
+            except Exception:
                 continue
 
         print(f"  Obras procesadas: {works_processed}")
@@ -1254,12 +1254,12 @@ class CadenceMarkovModel(BaseMarkovModel):
 
                             if len(pattern) >= 2:
                                 all_patterns.append(tuple(pattern))
-                    except:
+                    except Exception:
                         continue
 
                 works_processed += 1
 
-            except:
+            except Exception:
                 continue
 
         print(f"  Obras procesadas: {works_processed}")

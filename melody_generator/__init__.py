@@ -46,11 +46,12 @@ from .config import (
     MarkovConfig,
     ValidationConfig,
     OutputConfig,
+    ExpressionConfig,
     GenerationConfig,
 )
 
-# Clase principal y configuración de expresión
-from .architect import MelodicArchitect, ExpressionConfig
+# Clase principal
+from .architect import MelodicArchitect
 
 # Validación
 from .validation import (

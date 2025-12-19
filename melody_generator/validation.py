@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Any
 
 import abjad
-from music21 import key, stream, interval
+from music21 import key, stream
 
 from .converters import AbjadMusic21Converter
 
@@ -526,7 +526,7 @@ class MusicValidator:
                         diatonic_notes += 1
 
             return diatonic_notes / total_notes if total_notes > 0 else 0.0
-        except:
+        except Exception:
             return 0.0
 
     def _calculate_overall_score(
