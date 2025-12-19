@@ -473,6 +473,9 @@ class MelodicArchitect:
         # Generar melodía
         melody_staff = self.generate_period()
 
+        # Extraer pitches MIDI de la melodía para que el bajo conozca la melodía
+        melody_pitches = self._extract_melody_pitches(melody_staff)
+
         # Crear generador de bajo
         bass_generator = BassGenerator(
             scale_manager=self.scale_manager,
@@ -488,13 +491,19 @@ class MelodicArchitect:
             self.num_measures
         )
 
-        # Generar bajo
-        bass_staff = bass_generator.generate_bass_line(harmonic_plan)
+        # Generar bajo CON conocimiento de la melodía
+        bass_staff = bass_generator.generate_bass_line(harmonic_plan, melody_pitches)
+
+        # CORRECCIÓN POST-GENERACIÓN: Eliminar disonancias fuertes
+        # Analiza qué notas suenan simultáneamente y corrige 2das/7mas
+        dissonance_fixes = bass_generator.fix_dissonances_post_generation(
+            bass_staff, melody_staff
+        )
 
         # Aplicar expresión al bajo (dinámicas, articulaciones, slurs)
         bass_staff = bass_generator.apply_expression(bass_staff, self.num_measures)
 
-        # Verificar conducción de voces
+        # Verificar y corregir conducción de voces (quintas/octavas paralelas)
         voice_leading_errors = []
         if verify_voice_leading:
             voice_leading_errors = bass_generator.verify_voice_leading(
@@ -889,3 +898,38 @@ class MelodicArchitect:
             Dict con información de la modulación
         """
         return self.expression_applicator.get_modulation_plan(target_relationship)
+
+    def _extract_melody_pitches(self, staff: abjad.Staff) -> List[int]:
+        """
+        Extrae los pitches MIDI de un staff de melodía.
+
+        Esto permite que el bajo CONOZCA la melodía y pueda:
+        - Evitar disonancias en tiempos fuertes
+        - Crear movimiento contrario cuando sea apropiado
+        - Verificar consonancias en tiempo real
+
+        Args:
+            staff: Staff de Abjad con la melodía
+
+        Returns:
+            Lista de valores MIDI de cada nota
+        """
+        pitches = []
+        for leaf in abjad.iterate.leaves(staff):
+            if isinstance(leaf, abjad.Note):
+                pitch = leaf.written_pitch
+                if callable(pitch):
+                    pitch = pitch()
+                # Abjad: pitch.number es relativo a C4 (middle C)
+                pitch_num = pitch.number
+                if callable(pitch_num):
+                    pitch_num = pitch_num()
+                midi_value = pitch_num + 60  # C4 = MIDI 60
+                pitches.append(midi_value)
+            elif isinstance(leaf, abjad.Rest):
+                # Para silencios, usar el pitch anterior o un valor neutro
+                if pitches:
+                    pitches.append(pitches[-1])
+                else:
+                    pitches.append(60)  # C4 como default
+        return pitches

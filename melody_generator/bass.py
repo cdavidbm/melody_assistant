@@ -609,6 +609,7 @@ class BassGenerator:
         """
         self._last_bass_pitch = None
         self._voice_leading_errors = []
+        self._current_num_measures = len(harmonic_plan)  # Para cálculo de consonancias
 
         # Generar según estilo
         if self.config.style == BassStyle.SIMPLE:
@@ -785,12 +786,24 @@ class BassGenerator:
                 harmonic_func.chord_tones,
             )
 
-            # Crear notas
+            # Crear notas con verificación de consonancias
             octave = self.config.octave
-            for degree in walking_degrees:
+            for note_idx, degree in enumerate(walking_degrees):
                 deg_octave = octave
                 if degree > 5:
                     deg_octave = octave - 1
+
+                # VERIFICAR Y CORREGIR CONSONANCIA con la melodía
+                is_strong_beat = (note_idx == 0)  # Tiempo 1 es fuerte
+                degree = self._verify_and_fix_consonance(
+                    bass_degree=degree,
+                    chord_tones=harmonic_func.chord_tones,
+                    melody_pitches=melody_pitches,
+                    measure_idx=measure_idx,
+                    note_idx=note_idx,
+                    is_strong_beat=is_strong_beat,
+                    octave=deg_octave,
+                )
 
                 pitch_str = self._degree_to_pitch(degree, deg_octave)
                 note = self._pitch_to_abjad(pitch_str, beat_unit)
@@ -1132,6 +1145,19 @@ class BassGenerator:
             if i == 0 and degree not in chord_tones:
                 degree = self._nearest_chord_tone(degree, chord_tones)
 
+            # VERIFICAR Y CORREGIR CONSONANCIA con la melodía
+            # Tiempos fuertes (i=0) requieren consonancia estricta
+            is_strong_beat = (i == 0)
+            degree = self._verify_and_fix_consonance(
+                bass_degree=degree,
+                chord_tones=chord_tones,
+                melody_pitches=melody_pitches,
+                measure_idx=measure_idx,
+                note_idx=i,
+                is_strong_beat=is_strong_beat,
+                octave=deg_octave,
+            )
+
             pitch_str = self._degree_to_pitch(degree, deg_octave)
             note = self._pitch_to_abjad(pitch_str, duration)
             notes.append(note)
@@ -1424,6 +1450,136 @@ class BassGenerator:
 
         return bass_degree
 
+    def _verify_and_fix_consonance(
+        self,
+        bass_degree: int,
+        chord_tones: List[int],
+        melody_pitches: Optional[List[int]],
+        measure_idx: int,
+        note_idx: int,
+        is_strong_beat: bool,
+        octave: int,
+    ) -> int:
+        """
+        Verifica y CORRIGE la consonancia entre bajo y melodía.
+
+        Este método es ACTIVO: no solo detecta problemas, los soluciona.
+
+        Reglas:
+        - Tiempos fuertes: SOLO consonancias perfectas (3ra, 5ta, 6ta, 8va)
+        - Tiempos débiles: toleran disonancias de paso (2da, 7ma)
+        - Unísono y octava: evitar en tiempos débiles (demasiado "vacío")
+
+        Args:
+            bass_degree: Grado propuesto para el bajo
+            chord_tones: Notas del acorde
+            melody_pitches: Pitches MIDI de la melodía
+            measure_idx: Índice del compás
+            note_idx: Índice de la nota dentro del compás
+            is_strong_beat: Si es tiempo fuerte
+            octave: Octava del bajo
+
+        Returns:
+            Grado corregido (o el original si ya era consonante)
+        """
+        # Si no hay melodía, no podemos verificar
+        if not melody_pitches:
+            return bass_degree
+
+        # Calcular número total de compases (estimado desde el contexto del generador)
+        num_measures = max(1, getattr(self, '_current_num_measures', 8))
+
+        # Estimar qué nota de la melodía corresponde a esta posición
+        # Usar distribución uniforme de notas por compás
+        total_melody_notes = len(melody_pitches)
+        notes_per_measure = max(1, total_melody_notes // num_measures)
+
+        # Índice aproximado en la melodía
+        melody_note_idx = measure_idx * notes_per_measure + min(note_idx, notes_per_measure - 1)
+
+        # Asegurar que está dentro de rango
+        melody_note_idx = min(melody_note_idx, total_melody_notes - 1)
+        melody_note_idx = max(0, melody_note_idx)
+
+        melody_midi = melody_pitches[melody_note_idx]
+
+        # Convertir bajo a MIDI
+        from music21 import pitch as m21pitch
+        pitch_str = self._degree_to_pitch(bass_degree, octave)
+        try:
+            bass_midi = m21pitch.Pitch(pitch_str).midi
+        except Exception:
+            return bass_degree  # Si falla conversión, mantener original
+
+        # Calcular intervalo (clase de intervalo: 0-11)
+        interval_class = abs(melody_midi - bass_midi) % 12
+
+        # Clasificar intervalos
+        # Consonancias perfectas: unísono(0), 5ta(7)
+        # Consonancias imperfectas: 3ra menor(3), 3ra mayor(4), 6ta menor(8), 6ta mayor(9)
+        # Disonancias: 2da menor(1), 2da mayor(2), 4ta(5), tritono(6), 7ma menor(10), 7ma mayor(11)
+
+        consonant_perfect = {0, 7}  # unísono/octava, 5ta justa
+        consonant_imperfect = {3, 4, 8, 9}  # 3ras y 6tas
+        all_consonant = consonant_perfect | consonant_imperfect
+        strong_dissonant = {1, 2, 10, 11}  # 2das y 7mas - SIEMPRE evitar
+
+        # REGLA 1: Tiempos fuertes DEBEN ser consonantes
+        if is_strong_beat:
+            if interval_class not in all_consonant:
+                # Buscar la MEJOR nota del acorde que sea consonante
+                best_degree = None
+                best_score = -1
+
+                for ct in chord_tones:
+                    ct_pitch_str = self._degree_to_pitch(ct, octave)
+                    try:
+                        ct_midi = m21pitch.Pitch(ct_pitch_str).midi
+                        ct_interval = abs(melody_midi - ct_midi) % 12
+
+                        # Puntuar: consonancias imperfectas > perfectas > otras
+                        if ct_interval in consonant_imperfect:
+                            score = 3  # Mejor: 3ras y 6tas (sonido rico)
+                        elif ct_interval in consonant_perfect:
+                            score = 2  # Bueno: 5tas y octavas
+                        elif ct_interval not in strong_dissonant:
+                            score = 1  # Aceptable: 4ta, tritono
+                        else:
+                            score = 0  # Evitar: 2das y 7mas
+
+                        if score > best_score:
+                            best_score = score
+                            best_degree = ct
+                    except Exception:
+                        continue
+
+                if best_degree is not None:
+                    return best_degree
+
+        # REGLA 2: Tiempos débiles - evitar disonancias fuertes (2das y 7mas)
+        else:
+            if interval_class in strong_dissonant:
+                # Mover por grado conjunto para crear nota de paso válida
+                # Dirección: alejarse de la disonancia
+                if interval_class in {1, 2}:  # 2da - muy cerca
+                    # Bajar el bajo para crear distancia
+                    new_degree = ((bass_degree - 2) % 7) + 1
+                else:  # 7ma - casi octava
+                    # Subir el bajo para llegar a octava/unísono
+                    new_degree = (bass_degree % 7) + 1
+
+                # Verificar que el nuevo grado es mejor
+                new_pitch_str = self._degree_to_pitch(new_degree, octave)
+                try:
+                    new_midi = m21pitch.Pitch(new_pitch_str).midi
+                    new_interval = abs(melody_midi - new_midi) % 12
+                    if new_interval not in strong_dissonant:
+                        return new_degree
+                except Exception:
+                    pass
+
+        return bass_degree
+
     def _nearest_chord_tone(self, degree: int, chord_tones: List[int]) -> int:
         """
         Encuentra la nota del acorde más cercana a un grado dado.
@@ -1455,16 +1611,21 @@ class BassGenerator:
         self,
         bass_staff: abjad.Staff,
         melody_staff: abjad.Staff,
+        auto_fix: bool = True,
     ) -> List[VoiceLeadingError]:
         """
-        Verifica la conducción de voces entre bajo y melodía.
+        Verifica y CORRIGE la conducción de voces entre bajo y melodía.
+
+        Este método es ACTIVO: detecta quintas/octavas paralelas y las CORRIGE
+        modificando el bajo para evitar el error.
 
         Args:
-            bass_staff: Staff del bajo
+            bass_staff: Staff del bajo (SE MODIFICA IN-PLACE si auto_fix=True)
             melody_staff: Staff de la melodía
+            auto_fix: Si True, corrige automáticamente los errores
 
         Returns:
-            Lista de errores detectados
+            Lista de errores detectados (antes de corrección si auto_fix=True)
         """
         errors = []
 
@@ -1479,7 +1640,6 @@ class BassGenerator:
             return errors
 
         # Verificar cada par de notas consecutivas
-        # Simplificación: comparamos nota por nota (asume misma cantidad)
         min_len = min(len(bass_notes), len(melody_notes))
 
         for i in range(1, min_len):
@@ -1488,27 +1648,40 @@ class BassGenerator:
             melody_curr = self._note_to_midi(melody_notes[i])
             melody_prev = self._note_to_midi(melody_notes[i-1])
 
+            error_found = None
+
             # Verificar quintas paralelas
             if VoiceLeadingChecker.check_parallel_fifths(
                 melody_curr, bass_curr, melody_prev, bass_prev
             ):
-                errors.append(VoiceLeadingError(
+                error_found = VoiceLeadingError(
                     error_type="parallel_fifths",
                     measure_index=i,
                     description=f"Quintas paralelas en posición {i}"
-                ))
+                )
+                errors.append(error_found)
 
             # Verificar octavas paralelas
-            if VoiceLeadingChecker.check_parallel_octaves(
+            elif VoiceLeadingChecker.check_parallel_octaves(
                 melody_curr, bass_curr, melody_prev, bass_prev
             ):
-                errors.append(VoiceLeadingError(
+                error_found = VoiceLeadingError(
                     error_type="parallel_octaves",
                     measure_index=i,
                     description=f"Octavas paralelas en posición {i}"
-                ))
+                )
+                errors.append(error_found)
 
-            # Verificar quintas directas (advertencia)
+            # CORREGIR si se encontró error y auto_fix está activo
+            if error_found and auto_fix:
+                self._fix_parallel_motion(
+                    bass_notes[i],
+                    bass_curr,
+                    melody_curr,
+                    error_found.error_type
+                )
+
+            # Verificar quintas directas (advertencia, no corregir)
             if VoiceLeadingChecker.check_direct_fifths(
                 melody_curr, bass_curr, melody_prev, bass_prev
             ):
@@ -1520,6 +1693,174 @@ class BassGenerator:
 
         self._voice_leading_errors = errors
         return errors
+
+    def _fix_parallel_motion(
+        self,
+        bass_note: abjad.Note,
+        bass_midi: int,
+        melody_midi: int,
+        error_type: str,
+    ) -> None:
+        """
+        Corrige una nota del bajo que causa movimiento paralelo prohibido.
+
+        Estrategia de corrección:
+        - Quintas paralelas: mover bajo una 3ra arriba o abajo
+        - Octavas paralelas: mover bajo una 3ra arriba o abajo
+
+        Args:
+            bass_note: Nota del bajo a modificar (IN-PLACE)
+            bass_midi: Valor MIDI actual del bajo
+            melody_midi: Valor MIDI de la melodía
+            error_type: "parallel_fifths" o "parallel_octaves"
+        """
+        # Calcular nueva nota: mover una 3ra menor (3 semitonos)
+        # Preferir movimiento hacia consonancia imperfecta (3ra o 6ta)
+        current_interval = abs(melody_midi - bass_midi) % 12
+
+        # Si es 5ta (7) o 8va (0), ir a 3ra (3 o 4) o 6ta (8 o 9)
+        if current_interval == 7:  # Quinta justa
+            # Bajar 4 semitonos para ir a 3ra mayor
+            new_bass_midi = bass_midi - 4
+        elif current_interval == 0:  # Octava/unísono
+            # Bajar 3 semitonos para ir a 3ra menor debajo
+            new_bass_midi = bass_midi - 3
+        else:
+            # Mover 2 semitonos
+            new_bass_midi = bass_midi - 2
+
+        # Calcular nuevo pitch
+        new_pitch_num = new_bass_midi - 60  # Convertir de MIDI a número Abjad
+
+        # Crear nuevo pitch y asignar a la nota
+        try:
+            new_pitch = abjad.NamedPitch(new_pitch_num)
+            bass_note.written_pitch = new_pitch
+        except Exception:
+            # Si falla, intentar ajuste más conservador
+            try:
+                conservative_midi = bass_midi - 1
+                conservative_pitch = abjad.NamedPitch(conservative_midi - 60)
+                bass_note.written_pitch = conservative_pitch
+            except Exception:
+                pass  # No se pudo corregir, mantener original
+
+    def fix_dissonances_post_generation(
+        self,
+        bass_staff: abjad.Staff,
+        melody_staff: abjad.Staff,
+    ) -> int:
+        """
+        Corrección post-generación de disonancias basada en tiempo real.
+
+        Este método analiza qué notas suenan SIMULTÁNEAMENTE y corrige
+        las disonancias fuertes (2das y 7mas) en el bajo.
+
+        Args:
+            bass_staff: Staff del bajo (SE MODIFICA IN-PLACE)
+            melody_staff: Staff de la melodía
+
+        Returns:
+            Número de correcciones realizadas
+        """
+        corrections = 0
+
+        # Construir mapa temporal: offset -> nota
+        def build_time_map(staff):
+            time_map = {}
+            current_offset = 0
+            for leaf in abjad.iterate.leaves(staff):
+                if isinstance(leaf, abjad.Note):
+                    time_map[current_offset] = leaf
+                duration = abjad.get.duration(leaf)
+                # Convertir Duration a float
+                current_offset += float(duration)
+            return time_map
+
+        melody_map = build_time_map(melody_staff)
+        bass_notes = [(float(abjad.get.duration(n, preprolated=True)), n)
+                      for n in abjad.iterate.leaves(bass_staff)
+                      if isinstance(n, abjad.Note)]
+
+        # Para cada nota del bajo, encontrar qué nota de melodía suena al mismo tiempo
+        current_offset = 0
+        for dur, bass_note in bass_notes:
+            # Buscar la nota de melodía más cercana a este offset
+            melody_note = None
+            best_match = float('inf')
+
+            for mel_offset, mel_note in melody_map.items():
+                if abs(mel_offset - current_offset) < best_match:
+                    best_match = abs(mel_offset - current_offset)
+                    melody_note = mel_note
+
+            if melody_note is not None:
+                bass_midi = self._note_to_midi(bass_note)
+                melody_midi = self._note_to_midi(melody_note)
+
+                interval = abs(melody_midi - bass_midi) % 12
+
+                # Disonancias fuertes: 2das (1, 2) y 7mas (10, 11)
+                if interval in {1, 2, 10, 11}:
+                    # Corregir moviendo el bajo
+                    self._fix_dissonance(bass_note, bass_midi, melody_midi, interval)
+                    corrections += 1
+
+            current_offset += dur
+
+        return corrections
+
+    def _fix_dissonance(
+        self,
+        bass_note: abjad.Note,
+        bass_midi: int,
+        melody_midi: int,
+        interval: int,
+    ) -> None:
+        """
+        Corrige una disonancia fuerte moviendo el bajo a una consonancia.
+
+        Busca la consonancia más cercana y mueve el bajo allí.
+        Consonancias objetivo: 3ra menor(3), 3ra mayor(4), 5ta(7), 6ta menor(8), 6ta mayor(9)
+
+        Args:
+            bass_note: Nota del bajo a modificar
+            bass_midi: MIDI actual del bajo
+            melody_midi: MIDI de la melodía
+            interval: Clase de intervalo (1, 2, 10, 11)
+        """
+        # Consonancias objetivo ordenadas por preferencia musical
+        # Preferimos 3ras y 6tas (consonancias imperfectas) sobre 5tas/8vas
+        consonances = [3, 4, 8, 9, 7, 0]  # 3ra-, 3ra+, 6ta-, 6ta+, 5ta, 8va
+
+        # Encontrar la consonancia más cercana
+        best_new_midi = bass_midi
+        min_movement = float('inf')
+
+        for target_interval in consonances:
+            # Calcular nuevo MIDI del bajo para lograr este intervalo
+            # melody_midi - new_bass_midi = target_interval (mod 12)
+            # new_bass_midi = melody_midi - target_interval
+
+            # Probar en ambas octavas
+            for octave_adj in [0, -12, 12]:
+                candidate = melody_midi - target_interval + octave_adj
+
+                # Verificar que está en rango razonable del bajo (C2-C4 aprox)
+                if 36 <= candidate <= 72:  # Rango del bajo
+                    movement = abs(candidate - bass_midi)
+                    if movement < min_movement:
+                        min_movement = movement
+                        best_new_midi = candidate
+
+        # Aplicar corrección
+        if best_new_midi != bass_midi:
+            new_pitch_num = best_new_midi - 60
+            try:
+                new_pitch = abjad.NamedPitch(new_pitch_num)
+                bass_note.written_pitch = new_pitch
+            except Exception:
+                pass  # No se pudo corregir
 
     def _note_to_midi(self, note: abjad.Note) -> int:
         """Convierte nota Abjad a valor MIDI."""
