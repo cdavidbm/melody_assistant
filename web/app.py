@@ -75,6 +75,7 @@ BASS_STYLES = [
     ("simple", "Simple (una nota por compas)"),
     ("alberti", "Alberti (arpegio clasico)"),
     ("walking", "Walking (movimiento diatonico)"),
+    ("contrapunto", "Contrapunto (linea melodica independiente)"),
 ]
 MARKOV_ORDERS = [
     (1, "1 (menos contexto)"),
@@ -206,6 +207,7 @@ def generate():
             "simple": BassStyle.SIMPLE,
             "alberti": BassStyle.ALBERTI,
             "walking": BassStyle.WALKING,
+            "contrapunto": BassStyle.CONTRAPUNTO,
         }
         bass_style = bass_style_map.get(bass_style_str, BassStyle.SIMPLE)
 

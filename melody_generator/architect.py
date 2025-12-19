@@ -479,6 +479,8 @@ class MelodicArchitect:
             harmony_manager=self.harmony_manager,
             meter_tuple=self.meter_tuple,
             config=bass_config,
+            impulse_type=self.impulse_type,
+            anacrusis_duration=self.lilypond_formatter.anacrusis_duration,
         )
 
         # Obtener progresión armónica
@@ -488,6 +490,9 @@ class MelodicArchitect:
 
         # Generar bajo
         bass_staff = bass_generator.generate_bass_line(harmonic_plan)
+
+        # Aplicar expresión al bajo (dinámicas, articulaciones, slurs)
+        bass_staff = bass_generator.apply_expression(bass_staff, self.num_measures)
 
         # Verificar conducción de voces
         voice_leading_errors = []

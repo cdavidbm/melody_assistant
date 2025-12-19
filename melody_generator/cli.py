@@ -87,6 +87,7 @@ BASS_STYLE_MAP = {
     "1": "simple",
     "2": "alberti",
     "3": "walking",
+    "4": "contrapunto",
 }
 
 
@@ -362,6 +363,7 @@ def get_bass_config() -> Optional[tuple]:
     print("1. Simple (una nota por compás - solemne, lento)")
     print("2. Alberti (arpegio: raíz-quinta-tercera-quinta - clásico)")
     print("3. Walking (movimiento diatónico por grados - más móvil)")
+    print("4. Contrapunto (línea melódica independiente - polifónico)")
     bass_style_input = input("Seleccione estilo [1]: ").strip() or "1"
     bass_style_str = BASS_STYLE_MAP.get(bass_style_input, "simple")
 
@@ -369,6 +371,7 @@ def get_bass_config() -> Optional[tuple]:
         "simple": BassStyle.SIMPLE,
         "alberti": BassStyle.ALBERTI,
         "walking": BassStyle.WALKING,
+        "contrapunto": BassStyle.CONTRAPUNTO,
     }
     bass_style = style_map.get(bass_style_str, BassStyle.SIMPLE)
 
