@@ -94,6 +94,12 @@ from .markov import (
     RhythmicMarkovModel,
     HarmonicContextMarkovModel,
     CadenceMarkovModel,
+    # Funciones de filtrado diatónico
+    get_diatonic_pitch_classes,
+    is_diatonic_interval,
+    filter_diatonic_intervals,
+    MAJOR_SCALE_PITCH_CLASSES,
+    MINOR_SCALE_PITCH_CLASSES,
 )
 
 # Sistema de scoring
@@ -224,6 +230,12 @@ __all__ = [
     "RhythmicMarkovModel",
     "HarmonicContextMarkovModel",
     "CadenceMarkovModel",
+    # Filtrado diatónico para Markov
+    "get_diatonic_pitch_classes",
+    "is_diatonic_interval",
+    "filter_diatonic_intervals",
+    "MAJOR_SCALE_PITCH_CLASSES",
+    "MINOR_SCALE_PITCH_CLASSES",
     # Scoring
     "MelodicScorer",
     "NoteCandidate",

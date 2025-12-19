@@ -80,7 +80,7 @@ def get_random_defaults():
         "use_rests": random.choice([True, False]),
         "use_markov": False,
         "composer": "bach",
-        "markov_weight": 0.5,
+        "markov_weight": 0.3,
         "climax_position": round(random.uniform(0.6, 0.8), 2),
         "variation_freedom": random.choice([1, 2, 3]),
         # Expression options

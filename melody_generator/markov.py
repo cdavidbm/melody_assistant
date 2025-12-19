@@ -15,6 +15,92 @@ from fractions import Fraction
 logger = logging.getLogger(__name__)
 
 
+# ============================================================================
+# Constantes y funciones auxiliares para filtrado diatónico
+# ============================================================================
+
+# Pitch classes diatónicas para escala mayor (C=0)
+MAJOR_SCALE_PITCH_CLASSES = {0, 2, 4, 5, 7, 9, 11}  # C, D, E, F, G, A, B
+
+# Pitch classes diatónicas para escala menor natural (A=9)
+MINOR_SCALE_PITCH_CLASSES = {0, 2, 3, 5, 7, 8, 10}  # A, B, C, D, E, F, G
+
+# Mapeo de nombre de tónica a pitch class
+TONIC_TO_PITCH_CLASS = {
+    'C': 0, 'C#': 1, 'Db': 1, 'D': 2, 'D#': 3, 'Eb': 3,
+    'E': 4, 'F': 5, 'F#': 6, 'Gb': 6, 'G': 7, 'G#': 8,
+    'Ab': 8, 'A': 9, 'A#': 10, 'Bb': 10, 'B': 11,
+}
+
+
+def get_diatonic_pitch_classes(key_name: str, mode: str = "major") -> set:
+    """
+    Obtiene las pitch classes diatónicas para una tonalidad.
+
+    Args:
+        key_name: Nombre de la tónica (ej: "C", "D", "Eb")
+        mode: "major", "minor", o modos griegos
+
+    Returns:
+        Set de pitch classes diatónicas (0-11)
+    """
+    # Obtener pitch class de la tónica
+    tonic_pc = TONIC_TO_PITCH_CLASS.get(key_name, 0)
+
+    # Elegir patrón de escala
+    if mode in ("minor", "aeolian", "natural_minor"):
+        base_pcs = MINOR_SCALE_PITCH_CLASSES
+    else:
+        # Major y la mayoría de modos usan escala mayor como base
+        base_pcs = MAJOR_SCALE_PITCH_CLASSES
+
+    # Transponer al tono correcto
+    return {(pc + tonic_pc) % 12 for pc in base_pcs}
+
+
+def is_diatonic_interval(
+    from_midi: int,
+    interval_semitones: int,
+    diatonic_pcs: set
+) -> bool:
+    """
+    Verifica si un intervalo desde una nota resulta en nota diatónica.
+
+    Args:
+        from_midi: Nota MIDI de origen
+        interval_semitones: Intervalo en semitonos
+        diatonic_pcs: Set de pitch classes diatónicas
+
+    Returns:
+        True si la nota resultante es diatónica
+    """
+    target_midi = from_midi + interval_semitones
+    target_pc = target_midi % 12
+    return target_pc in diatonic_pcs
+
+
+def filter_diatonic_intervals(
+    from_midi: int,
+    intervals: list,
+    diatonic_pcs: set
+) -> list:
+    """
+    Filtra una lista de intervalos para quedarse solo con los diatónicos.
+
+    Args:
+        from_midi: Nota MIDI de origen
+        intervals: Lista de intervalos en semitonos
+        diatonic_pcs: Set de pitch classes diatónicas
+
+    Returns:
+        Lista filtrada de intervalos diatónicos
+    """
+    return [
+        intv for intv in intervals
+        if is_diatonic_interval(from_midi, intv, diatonic_pcs)
+    ]
+
+
 class MarkovChain:
     """
     Cadena de Markov genérica de orden N.
@@ -324,6 +410,7 @@ class MelodicMarkovModel(BaseMarkovModel):
         composer: str = "bach",
         max_works: Optional[int] = None,
         voice_part: int = 0,
+        diatonic_only: bool = True,
     ):
         """
         Entrena desde el corpus de music21.
@@ -332,6 +419,7 @@ class MelodicMarkovModel(BaseMarkovModel):
             composer: "bach", "mozart", "beethoven", "all"
             max_works: Límite de obras (None = todas)
             voice_part: Índice de voz a extraer (0 = soprano/voz superior)
+            diatonic_only: Si True, solo entrena con intervalos diatónicos
         """
         from music21 import corpus, interval
 
@@ -349,11 +437,13 @@ class MelodicMarkovModel(BaseMarkovModel):
             results = results[:max_works]
 
         print(f"  Encontradas {len(results)} obras")
-        print(f"  Extrayendo intervalos melódicos...")
+        filter_msg = " (solo diatónicos)" if diatonic_only else ""
+        print(f"  Extrayendo intervalos melódicos{filter_msg}...")
 
         all_intervals = []
         works_processed = 0
         works_failed = 0
+        intervals_filtered = 0
 
         for idx, work in enumerate(results):
             try:
@@ -382,7 +472,19 @@ class MelodicMarkovModel(BaseMarkovModel):
                         # Limitar intervalos a rango razonable (-12 a +12)
                         semitones = int(intv.semitones)
                         if -12 <= semitones <= 12:
-                            intervals.append(semitones)
+                            # Filtrado diatónico opcional
+                            if diatonic_only:
+                                # Verificar que ambas notas sean diatónicas en C mayor
+                                # (asumimos que la música tonal tiene patrones similares)
+                                pc1 = notes[i].pitch.midi % 12
+                                pc2 = notes[i + 1].pitch.midi % 12
+                                if (pc1 in MAJOR_SCALE_PITCH_CLASSES and
+                                    pc2 in MAJOR_SCALE_PITCH_CLASSES):
+                                    intervals.append(semitones)
+                                else:
+                                    intervals_filtered += 1
+                            else:
+                                intervals.append(semitones)
                     except Exception as e:
                         logger.debug(f"Error calculando intervalo: {e}")
                         continue
@@ -402,6 +504,8 @@ class MelodicMarkovModel(BaseMarkovModel):
         print(f"  Obras procesadas exitosamente: {works_processed}")
         print(f"  Obras omitidas (errores): {works_failed}")
         print(f"  Total de intervalos extraídos: {len(all_intervals)}")
+        if diatonic_only:
+            print(f"  Intervalos cromáticos filtrados: {intervals_filtered}")
 
         # Entrenar cadena de Markov
         print(f"  Entrenando cadena de Markov (orden {self.order})...")
@@ -525,11 +629,29 @@ class EnhancedMelodicMarkovModel(BaseMarkovModel):
         """Crea una tupla de estado."""
         return (degree, metric, direction)
 
+    # Mapeo de pitch class a grado de escala mayor
+    # Solo notas diatónicas en C mayor: C=1, D=2, E=3, F=4, G=5, A=6, B=7
+    PITCH_CLASS_TO_DEGREE = {
+        0: 1,   # C
+        2: 2,   # D
+        4: 3,   # E
+        5: 4,   # F
+        7: 5,   # G
+        9: 6,   # A
+        11: 7,  # B
+    }
+
+    # Pitch classes diatónicas en C mayor
+    DIATONIC_PITCH_CLASSES = {0, 2, 4, 5, 7, 9, 11}
+
     def _extract_melody_features(
         self, notes, beats_per_measure: int = 4
     ) -> List[Tuple[int, str, int]]:
         """
         Extrae características melódicas de una secuencia de notas.
+
+        Solo extrae notas diatónicas para evitar entrenar sobre
+        pasajes cromáticos que causarían atonalidad.
 
         Args:
             notes: Lista de notas de music21
@@ -538,8 +660,6 @@ class EnhancedMelodicMarkovModel(BaseMarkovModel):
         Returns:
             Lista de tuplas (degree, metric, direction)
         """
-        from music21 import pitch as m21_pitch
-
         features = []
         prev_midi = None
 
@@ -547,11 +667,16 @@ class EnhancedMelodicMarkovModel(BaseMarkovModel):
             try:
                 if hasattr(note, 'pitch'):
                     midi = note.pitch.midi
-                    # Convertir MIDI a grado aproximado (asumiendo C mayor)
-                    # Esto es una simplificación; idealmente detectaríamos la tonalidad
-                    degree = ((midi % 12) // 2) + 1
-                    if degree > 7:
-                        degree = 7
+                    pitch_class = midi % 12
+
+                    # Solo procesar notas diatónicas (evitar cromáticas)
+                    if pitch_class not in self.DIATONIC_PITCH_CLASSES:
+                        continue
+
+                    # Mapeo correcto de pitch class a grado
+                    degree = self.PITCH_CLASS_TO_DEGREE.get(pitch_class)
+                    if degree is None:
+                        continue
 
                     # Determinar contexto métrico
                     beat = note.beat if hasattr(note, 'beat') else 1

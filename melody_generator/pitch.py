@@ -37,6 +37,8 @@ from .memory import (
 if TYPE_CHECKING:
     from .markov import MelodicMarkovModel, EnhancedMelodicMarkovModel
 
+from .markov import get_diatonic_pitch_classes, is_diatonic_interval
+
 
 class PitchSelector:
     """
@@ -67,7 +69,7 @@ class PitchSelector:
         impulse_type: ImpulseType = ImpulseType.TETIC,
         meter_tuple: Tuple[int, int] = (4, 4),
         markov_model: Optional["MelodicMarkovModel"] = None,
-        markov_weight: float = 0.5,
+        markov_weight: float = 0.3,
         scoring_temperature: float = 0.3,
         decision_memory: Optional[DecisionMemory] = None,
     ):
@@ -127,6 +129,13 @@ class PitchSelector:
 
         # Contexto métrico actual (para Markov mejorado)
         self._current_is_strong_beat = False
+
+        # Pitch classes diatónicas para filtrado de Markov
+        # Esto previene que Markov sugiera intervalos que lleven a notas cromáticas
+        self._diatonic_pcs = get_diatonic_pitch_classes(
+            scale_manager.key_name,
+            scale_manager.mode
+        )
 
         # Inicializar sistema de scoring
         self._init_scorer()
@@ -602,6 +611,9 @@ class PitchSelector:
         Si el modelo es EnhancedMelodicMarkovModel, usa probabilidades
         nativas por grado. Si es MelodicMarkovModel clásico, convierte
         intervalos a grados.
+
+        IMPORTANTE: Filtra sugerencias que resultarían en notas cromáticas
+        para prevenir atonalidad.
         """
         if not self.markov_model or not self.last_pitch:
             return {}
@@ -609,12 +621,20 @@ class PitchSelector:
         # Verificar si es modelo mejorado (tiene método get_degree_probabilities)
         if hasattr(self.markov_model, 'get_degree_probabilities'):
             # Modelo mejorado: usar probabilidades nativas por grado
+            # Los grados 1-7 son por definición diatónicos, no requiere filtrado
             metric = "strong" if self._current_is_strong_beat else "weak"
             return self.markov_model.get_degree_probabilities(current_metric=metric)
 
-        # Modelo clásico: convertir intervalos a grados
+        # Modelo clásico: convertir intervalos a grados CON FILTRADO DIATÓNICO
         last_degree = self.scale_manager.pitch_to_degree(self.last_pitch)
         if last_degree is None:
+            return {}
+
+        # Obtener MIDI de la última nota para filtrado diatónico
+        try:
+            last_p = pitch.Pitch(self.last_pitch)
+            last_midi = last_p.midi
+        except Exception:
             return {}
 
         probs = {}
@@ -626,6 +646,12 @@ class PitchSelector:
 
             # Convertir a semitonos aproximados (asumiendo escala diatónica)
             semitone_approx = self._degree_movement_to_semitones(degree_diff)
+
+            # FILTRADO DIATÓNICO: verificar que el intervalo resulta en nota diatónica
+            if not is_diatonic_interval(last_midi, semitone_approx, self._diatonic_pcs):
+                # Si el intervalo llevaría a nota cromática, asignar probabilidad 0
+                probs[target_degree] = 0.0
+                continue
 
             # Obtener probabilidad del modelo Markov
             prob = self.markov_model.get_probability(semitone_approx)

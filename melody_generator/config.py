@@ -67,7 +67,7 @@ class MarkovConfig:
 
     enabled: bool = False
     composer: str = "bach"  # "bach", "mozart", "beethoven", "combined"
-    weight: float = 0.5  # 0.0-1.0
+    weight: float = 0.3  # 0.0-1.0 (reducido de 0.5 para evitar atonalidad)
     order: int = 2  # 1-3
 
     def __post_init__(self):
@@ -191,7 +191,7 @@ class GenerationConfig:
         variation_freedom: int = 2,
         use_markov: bool = False,
         markov_composer: str = "bach",
-        markov_weight: float = 0.5,
+        markov_weight: float = 0.3,
         markov_order: int = 2,
     ) -> "GenerationConfig":
         """

@@ -87,7 +87,7 @@ class MelodicArchitect:
         variation_freedom: int = 2,
         use_markov: bool = False,
         markov_composer: str = "bach",
-        markov_weight: float = 0.5,
+        markov_weight: float = 0.3,
         markov_order: int = 2,
         # Nuevos parámetros de expresión
         expression_config: Optional[ExpressionConfig] = None,

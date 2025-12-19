@@ -24,7 +24,7 @@ class RhythmGenerator:
         rhythmic_complexity: int,
         num_measures: int,
         markov_model: Optional["RhythmicMarkovModel"] = None,
-        markov_weight: float = 0.5,
+        markov_weight: float = 0.3,
     ):
         """
         Inicializa el generador de ritmo.
@@ -35,7 +35,7 @@ class RhythmGenerator:
             rhythmic_complexity: Nivel de complejidad (1-5)
             num_measures: Número total de compases
             markov_model: Modelo de Markov opcional para sugerencias rítmicas
-            markov_weight: Peso de influencia del modelo Markov (0.0-1.0)
+            markov_weight: Peso de influencia del modelo Markov (0.0-1.0, reducido de 0.5)
         """
         self.meter_tuple = meter_tuple
         self.subdivisions = subdivisions
@@ -108,6 +108,15 @@ class RhythmGenerator:
         else:
             return [(1, 4)]
 
+    # Denominadores válidos para LilyPond (potencias de 2)
+    VALID_DENOMINATORS = {1, 2, 4, 8, 16, 32, 64}
+
+    def _is_valid_duration(self, duration: Tuple[int, int]) -> bool:
+        """Verifica si una duración es válida para LilyPond."""
+        num, denom = duration
+        # El denominador debe ser una potencia de 2
+        return denom in self.VALID_DENOMINATORS and num > 0
+
     def _subdivide_quarter_note_beat(
         self, is_strong: bool, beat_index: int
     ) -> List[Tuple[int, int]]:
@@ -122,6 +131,11 @@ class RhythmGenerator:
 
             # Actualizar historial
             self.markov_model.update_history(suggested)
+
+            # Validar que la duración sea válida en LilyPond y encaje en el pulso
+            if not self._is_valid_duration(suggested):
+                # Usar fallback si la duración no es válida
+                suggested = random.choice(fallback_durations)
 
             # Validar que la duración encaje en el pulso (debe ser ≤ negra)
             # Convertir a quarterLength para comparar
@@ -284,6 +298,10 @@ class RhythmGenerator:
                 weight=self.markov_weight * 1.2,  # Aumentar influencia
                 fallback_durations=fallback,
             )
+
+            # Validar que la duración sea válida en LilyPond
+            if not self._is_valid_duration(suggested):
+                suggested = random.choice(fallback)
 
             # Validar que la duración cabe en el espacio restante
             suggested_sixteenths = self._duration_to_sixteenths(suggested)
