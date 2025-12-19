@@ -23,6 +23,16 @@ from .scoring import (
     MetricStrength,
     NoteCandidate,
 )
+from .memory import (
+    DecisionMemory,
+    Decision,
+    DecisionType,
+    Alternative,
+    ScoreBreakdown,
+    HarmonicContext,
+    MelodicContext,
+    MetricContext,
+)
 
 if TYPE_CHECKING:
     from .markov import MelodicMarkovModel, EnhancedMelodicMarkovModel
@@ -59,6 +69,7 @@ class PitchSelector:
         markov_model: Optional["MelodicMarkovModel"] = None,
         markov_weight: float = 0.5,
         scoring_temperature: float = 0.3,
+        decision_memory: Optional[DecisionMemory] = None,
     ):
         """
         Inicializa el selector de tonos.
@@ -95,6 +106,10 @@ class PitchSelector:
         self.markov_model = markov_model
         self.markov_weight = markov_weight
         self.scoring_temperature = scoring_temperature
+
+        # Sistema de memoria para decisiones
+        self.decision_memory = decision_memory
+        self._note_index = 0  # Índice global de notas
 
         # Estado interno
         self.current_octave = 4
@@ -348,6 +363,9 @@ class PitchSelector:
                 chord_tones=chord_tones,
                 should_be_structural=should_be_structural,
                 measure_index=measure_index,
+                beat_index=beat_index,
+                is_strong_beat=is_strong_beat,
+                harmonic_function=str(harmonic_function) if harmonic_function else None,
             )
 
         # Ajustar octava para contorno
@@ -392,9 +410,14 @@ class PitchSelector:
         chord_tones: List[int],
         should_be_structural: bool,
         measure_index: int,
+        beat_index: int = 0,
+        is_strong_beat: bool = False,
+        harmonic_function: Optional[str] = None,
     ) -> Tuple[str, int, NoteFunction]:
         """
         Selecciona una nota usando el sistema de scoring multi-criterio.
+
+        Registra la decisión en DecisionMemory si está disponible.
 
         Returns:
             Tupla de (pitch_str, degree, function)
@@ -451,7 +474,126 @@ class PitchSelector:
             else NoteFunction.PASSING
         )
 
+        # REGISTRAR DECISIÓN EN MEMORIA
+        if self.decision_memory is not None:
+            self._record_decision(
+                selected=selected,
+                candidates=candidates,
+                measure_index=measure_index,
+                beat_index=beat_index,
+                is_strong_beat=is_strong_beat,
+                chord_tones=chord_tones,
+                harmonic_function=harmonic_function,
+                phrase_position=phrase_position,
+                target_degree=target_degree,
+            )
+
         return selected.pitch_str, selected.degree, function
+
+    def _record_decision(
+        self,
+        selected: NoteCandidate,
+        candidates: List[NoteCandidate],
+        measure_index: int,
+        beat_index: int,
+        is_strong_beat: bool,
+        chord_tones: List[int],
+        harmonic_function: Optional[str],
+        phrase_position: PhrasePosition,
+        target_degree: Optional[int],
+    ):
+        """
+        Registra una decisión de pitch en la memoria.
+
+        Guarda el contexto completo para permitir correcciones quirúrgicas.
+        """
+        # Crear desglose de scores (usando atributos individuales de NoteCandidate)
+        score_breakdown = ScoreBreakdown(
+            voice_leading=selected.voice_leading_score,
+            harmonic=selected.harmonic_score,
+            contour=selected.contour_score,
+            tendency=selected.tendency_score,
+            markov=selected.markov_score,
+            variety=selected.variety_score,
+            range=selected.range_score,
+        )
+
+        # Crear alternativas (excluyendo la seleccionada)
+        alternatives = []
+        for c in candidates:
+            if c.pitch_str != selected.pitch_str:
+                alt_breakdown = ScoreBreakdown(
+                    voice_leading=c.voice_leading_score,
+                    harmonic=c.harmonic_score,
+                    contour=c.contour_score,
+                    tendency=c.tendency_score,
+                    markov=c.markov_score,
+                    variety=c.variety_score,
+                    range=c.range_score,
+                )
+                alternatives.append(Alternative(
+                    value=c.pitch_str,
+                    score=c.total_score,
+                    score_breakdown=alt_breakdown,
+                ))
+
+        # Calcular dirección melódica
+        direction = 0
+        prev_interval = None
+        if self.last_pitch:
+            try:
+                last_p = pitch.Pitch(self.last_pitch)
+                curr_p = pitch.Pitch(selected.pitch_str)
+                prev_interval = int(curr_p.ps - last_p.ps)
+                direction = 1 if prev_interval > 0 else (-1 if prev_interval < 0 else 0)
+            except Exception:
+                pass
+
+        # Contexto armónico
+        harmonic_ctx = HarmonicContext(
+            chord_degree=chord_tones[0] if chord_tones else 1,
+            chord_tones=chord_tones,
+            function=harmonic_function or "unknown",
+        )
+
+        # Contexto melódico
+        melodic_ctx = MelodicContext(
+            previous_pitch=self.last_pitch,
+            previous_interval=prev_interval,
+            direction=direction,
+            phrase_position=self.notes_in_current_phrase / max(1, self.current_phrase_contour.length) if self.current_phrase_contour else 0.0,
+            is_climax=(phrase_position == PhrasePosition.CLIMAX),
+            contour_target=target_degree,
+        )
+
+        # Contexto métrico
+        metric_ctx = MetricContext(
+            measure=measure_index + 1,  # 1-indexed para el usuario
+            beat=float(beat_index + 1),  # 1-indexed
+            beat_strength="strong" if is_strong_beat else "weak",
+            subdivision=1,  # TODO: calcular subdivisión real
+            is_downbeat=(beat_index == 0),
+            is_phrase_start=(self.notes_in_current_phrase == 0),
+            is_phrase_end=False,  # Se actualizará después si es necesario
+        )
+
+        # Crear y registrar decisión
+        decision = Decision(
+            decision_type=DecisionType.PITCH,
+            measure=measure_index + 1,
+            beat=float(beat_index + 1),
+            index=self._note_index,
+            chosen_value=selected.pitch_str,
+            chosen_score=selected.total_score,
+            score_breakdown=score_breakdown,
+            alternatives=alternatives,
+            harmonic_context=harmonic_ctx,
+            melodic_context=melodic_ctx,
+            metric_context=metric_ctx,
+        )
+
+        self.decision_memory.record_decision(decision)
+        self._note_index += 1
 
     def _get_markov_probabilities(self) -> Dict[int, float]:
         """
@@ -676,6 +818,27 @@ class PitchSelector:
     def set_last_was_rest(self, value: bool):
         """Actualiza el estado de si el último evento fue silencio."""
         self.last_was_rest = value
+
+    def reset_for_new_generation(self):
+        """Reinicia el estado para una nueva generación."""
+        self._note_index = 0
+        self.last_pitch = None
+        self.last_interval_direction = None
+        self.infraction_pending_compensation = False
+        self.last_was_rest = False
+        self.must_recover_leap = False
+        self.pending_tendency_resolution = None
+        self.climax_reached = False
+        self.current_highest_pitch = None
+        self.notes_in_current_phrase = 0
+        self.current_phrase_contour = None
+        if self.decision_memory:
+            self.decision_memory.clear()
+
+    def set_decision_memory(self, memory: DecisionMemory):
+        """Establece la memoria de decisiones."""
+        self.decision_memory = memory
+        self._note_index = 0
 
     def _resolve_tendency_tone(self, tendency_degree: int) -> int:
         """

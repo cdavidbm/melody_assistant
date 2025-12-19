@@ -37,6 +37,12 @@ from .modulation import ModulationGenerator
 from .development import MotivicDeveloper
 from .sequences import SequenceGenerator
 
+# Módulos de memoria, validación y corrección
+from .memory import DecisionMemory
+from .musicxml import MusicXMLExporter
+from .validation import MusicValidator, ValidationReport, IssueType, IssueSeverity
+from .correction import SurgicalCorrector, CorrectionRound
+
 
 class MelodicArchitect:
     """
@@ -495,6 +501,163 @@ class MelodicArchitect:
         """
         staff = self.generate_period()
         return self.apply_expression(staff)
+
+    def generate_with_validation(
+        self,
+        target_score: float = 0.80,
+        max_rounds: int = 5,
+        min_improvement: float = 0.02,
+        apply_expressions: bool = True,
+        verbose: bool = True,
+    ) -> Tuple[abjad.Staff, ValidationReport, DecisionMemory]:
+        """
+        Genera un período con validación y corrección quirúrgica iterativa.
+
+        Este método:
+        1. Genera la melodía registrando todas las decisiones
+        2. Exporta a MusicXML temporal para validación
+        3. Valida con music21 detectando issues específicos
+        4. Si score < target, aplica correcciones quirúrgicas
+        5. Repite hasta alcanzar score o agotar intentos
+
+        Args:
+            target_score: Score objetivo (default 80%)
+            max_rounds: Máximo de rondas de corrección (default 5)
+            min_improvement: Mejora mínima para continuar (default 2%)
+            apply_expressions: Si aplicar expresiones al final
+            verbose: Si mostrar progreso
+
+        Returns:
+            Tupla (staff, validation_report, decision_memory)
+        """
+        # Inicializar memoria de decisiones
+        memory = DecisionMemory()
+        memory.set_metadata(
+            key_name=self.key_name,
+            mode=self.mode,
+            meter=self.meter_tuple,
+            num_measures=self.num_measures,
+        )
+
+        # Configurar pitch_selector con memoria
+        self.pitch_selector.set_decision_memory(memory)
+        self.pitch_selector.reset_for_new_generation()
+
+        # Generar melodía inicial
+        if verbose:
+            print("Generando melodía inicial...")
+        staff = self.generate_period()
+
+        # Inicializar exportador MusicXML
+        exporter = MusicXMLExporter()
+
+        # Loop de validación y corrección
+        current_round = 0
+        final_report = None
+        corrector = None
+
+        while True:
+            # Exportar a MusicXML temporal
+            musicxml_path = exporter.export_for_validation(
+                staff=staff,
+                key_name=self.key_name,
+                mode=self.mode,
+                meter_tuple=self.meter_tuple,
+            )
+
+            # Validar con music21
+            validator = MusicValidator.from_musicxml(
+                musicxml_path=musicxml_path,
+                expected_key=self.key_name,
+                expected_mode=self.mode,
+                expected_meter=self.meter_tuple,
+                tolerance=target_score,
+            )
+            report = validator.validate_all_with_issues()
+
+            if verbose:
+                status = "✓" if report.overall_score >= target_score else "⚠"
+                print(f"  {status} Ronda {current_round}: Score = {report.overall_score:.1%}")
+                if report.issues:
+                    print(f"    Issues: {len(report.issues)} ({len(report.get_critical_issues())} críticos)")
+
+            # Verificar si alcanzamos el objetivo
+            if report.overall_score >= target_score:
+                if verbose:
+                    print(f"  ✓ Score objetivo alcanzado: {report.overall_score:.1%}")
+                final_report = report
+                break
+
+            # Verificar si debemos continuar
+            if current_round >= max_rounds:
+                if verbose:
+                    print(f"  ⚠ Máximo de rondas alcanzado. Score final: {report.overall_score:.1%}")
+                final_report = report
+                break
+
+            # Verificar rendimientos decrecientes
+            if corrector and current_round > 1:
+                should_continue, reason = corrector.should_continue(
+                    current_score=report.overall_score,
+                    target_score=target_score,
+                    max_rounds=max_rounds,
+                    min_improvement=min_improvement,
+                )
+                if not should_continue:
+                    if verbose:
+                        print(f"  ⚠ Detenido: {reason}. Score final: {report.overall_score:.1%}")
+                    final_report = report
+                    break
+
+            # Inicializar corrector si es necesario
+            if corrector is None:
+                corrector = SurgicalCorrector(
+                    staff=staff,
+                    memory=memory,
+                    key_name=self.key_name,
+                    mode=self.mode,
+                )
+
+            # Intentar correcciones
+            critical_issues = report.get_critical_issues()
+            warning_issues = report.get_issues_by_severity(IssueSeverity.WARNING)
+
+            # Priorizar issues críticos, luego warnings
+            issues_to_fix = critical_issues + warning_issues[:5]
+
+            if not issues_to_fix:
+                if verbose:
+                    print(f"  ⚠ No hay issues corregibles. Score final: {report.overall_score:.1%}")
+                final_report = report
+                break
+
+            if verbose:
+                print(f"    Intentando corregir {len(issues_to_fix)} issues...")
+
+            correction_round = corrector.fix_issues(
+                issues=issues_to_fix,
+                score_before=report.overall_score,
+            )
+
+            if correction_round.issues_fixed == 0:
+                if verbose:
+                    print(f"  ⚠ No se pudo corregir ningún issue. Score final: {report.overall_score:.1%}")
+                final_report = report
+                break
+
+            if verbose:
+                print(f"    Corregidos: {correction_round.issues_fixed}/{correction_round.issues_attempted}")
+
+            current_round += 1
+
+        # Limpiar archivo temporal
+        exporter.cleanup()
+
+        # Aplicar expresiones si se solicitó
+        if apply_expressions:
+            staff = self.apply_expression(staff)
+
+        return staff, final_report, memory
 
     def generate_with_form(
         self,

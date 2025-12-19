@@ -3,12 +3,15 @@ Sistema de scoring para seleccion de notas melodicas.
 Evalua candidatos segun multiples criterios teoricos y estilisticos.
 """
 
+import logging
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Tuple
 from enum import Enum
 import random
 
 from music21 import pitch, interval
+
+logger = logging.getLogger(__name__)
 
 
 class PhrasePosition(Enum):
@@ -216,7 +219,8 @@ class MelodicScorer:
                     candidate.calculate_total(self.weights)
                     candidates.append(candidate)
 
-                except Exception:
+                except Exception as e:
+                    logger.debug(f"Error generando candidato grado={degree}, octava={octave}: {e}")
                     continue
 
         # Ordenar por score (mejor primero)

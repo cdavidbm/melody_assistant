@@ -3,12 +3,16 @@ Cadenas de Markov para generación musical.
 Implementa aprendizaje de patrones melódicos y rítmicos desde corpus.
 """
 
+import ast
 import json
+import logging
 import random
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from fractions import Fraction
+
+logger = logging.getLogger(__name__)
 
 
 class MarkovChain:
@@ -42,7 +46,9 @@ class MarkovChain:
 
     def _key_to_state(self, key: str) -> Tuple:
         """Convierte clave string de JSON a tupla de estado."""
-        return eval(key)
+        # Usar ast.literal_eval() en lugar de eval() por seguridad
+        # Solo evalúa literales Python (tuplas, números, strings), no código arbitrario
+        return ast.literal_eval(key)
 
     def add_transition(self, prev_state: Tuple, next_state: Any):
         """
@@ -209,8 +215,8 @@ class MarkovChain:
             for next_key, count in next_states.items():
                 # Intentar reconstruir tipo original
                 try:
-                    # Intentar evaluar como tupla o número
-                    next_state = eval(next_key)
+                    # Usar ast.literal_eval() por seguridad (solo evalúa literales)
+                    next_state = ast.literal_eval(next_key)
                 except (ValueError, SyntaxError, TypeError):
                     # Si falla, dejar como string
                     next_state = next_key
@@ -377,7 +383,8 @@ class MelodicMarkovModel(BaseMarkovModel):
                         semitones = int(intv.semitones)
                         if -12 <= semitones <= 12:
                             intervals.append(semitones)
-                    except Exception:
+                    except Exception as e:
+                        logger.debug(f"Error calculando intervalo: {e}")
                         continue
 
                 if intervals:

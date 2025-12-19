@@ -1,15 +1,87 @@
 """
 Sistema de validación musical con music21.
 Valida que las partituras generadas cumplan con especificaciones musicales.
+
+Soporta validación detallada con ubicación exacta de problemas para
+permitir correcciones quirúrgicas sin regenerar la melodía completa.
 """
 
 from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional, Any
+from enum import Enum
 
 import abjad
-from music21 import key, stream
+from music21 import key, stream, converter
 
 from .converters import AbjadMusic21Converter
+
+
+class IssueType(Enum):
+    """Tipos de problemas detectados en la validación."""
+    OUT_OF_KEY = "out_of_key"  # Nota fuera de la escala
+    LARGE_LEAP = "large_leap"  # Salto melódico grande sin resolver
+    UNRESOLVED_TENDENCY = "unresolved_tendency"  # Nota de tendencia sin resolver
+    PARALLEL_MOTION = "parallel_motion"  # Movimiento paralelo (si aplica)
+    METER_ERROR = "meter_error"  # Duración incorrecta en compás
+    RANGE_EXCEEDED = "range_exceeded"  # Fuera del rango vocal
+    WEAK_CADENCE = "weak_cadence"  # Cadencia débil o incorrecta
+    REPETITION_EXCESS = "repetition_excess"  # Repetición excesiva de notas
+
+
+class IssueSeverity(Enum):
+    """Severidad del problema."""
+    CRITICAL = "critical"  # Debe corregirse
+    WARNING = "warning"  # Recomendado corregir
+    SUGGESTION = "suggestion"  # Opcional mejorar
+
+
+@dataclass
+class ValidationIssue:
+    """
+    Un problema específico detectado durante la validación.
+
+    Incluye ubicación exacta para permitir correcciones quirúrgicas.
+    """
+    issue_type: IssueType
+    severity: IssueSeverity
+    measure: int  # 1-indexed
+    beat: float  # 1-indexed (1.0, 1.5, 2.0, etc.)
+    note_index: Optional[int] = None  # Índice global de la nota
+
+    # Detalles del problema
+    description: str = ""
+    actual_value: Optional[str] = None  # Lo que se encontró
+    expected_value: Optional[str] = None  # Lo que debería ser
+    context: Dict[str, Any] = field(default_factory=dict)
+
+    # Sugerencias de corrección
+    suggested_fixes: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convierte a diccionario para serialización."""
+        return {
+            'type': self.issue_type.value,
+            'severity': self.severity.value,
+            'location': {
+                'measure': self.measure,
+                'beat': self.beat,
+                'note_index': self.note_index,
+            },
+            'description': self.description,
+            'actual': self.actual_value,
+            'expected': self.expected_value,
+            'context': self.context,
+            'suggested_fixes': self.suggested_fixes,
+        }
+
+    def __str__(self) -> str:
+        severity_icon = {
+            IssueSeverity.CRITICAL: "❌",
+            IssueSeverity.WARNING: "⚠️",
+            IssueSeverity.SUGGESTION: "💡",
+        }
+        icon = severity_icon.get(self.severity, "•")
+        return f"{icon} Compás {self.measure}, beat {self.beat}: {self.description}"
 
 
 @dataclass
@@ -91,9 +163,28 @@ class ValidationReport:
     range_validation: RangeValidation
     mode_validation: ModeValidation
 
+    # Lista detallada de problemas con ubicación exacta
+    issues: List[ValidationIssue] = field(default_factory=list)
+
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
+
+    def get_issues_by_type(self, issue_type: IssueType) -> List[ValidationIssue]:
+        """Obtiene issues de un tipo específico."""
+        return [i for i in self.issues if i.issue_type == issue_type]
+
+    def get_issues_by_severity(self, severity: IssueSeverity) -> List[ValidationIssue]:
+        """Obtiene issues de una severidad específica."""
+        return [i for i in self.issues if i.severity == severity]
+
+    def get_issues_in_measure(self, measure: int) -> List[ValidationIssue]:
+        """Obtiene issues en un compás específico."""
+        return [i for i in self.issues if i.measure == measure]
+
+    def get_critical_issues(self) -> List[ValidationIssue]:
+        """Obtiene solo los issues críticos que deben corregirse."""
+        return self.get_issues_by_severity(IssueSeverity.CRITICAL)
 
     def format_detailed_report(self) -> str:
         """Genera reporte detallado con ASCII art."""
@@ -188,6 +279,28 @@ class ValidationReport:
         )
         lines.append("└" + "─" * 68 + "┘")
         lines.append("")
+
+        # Detailed issues with location
+        if self.issues:
+            critical = self.get_critical_issues()
+            warnings_issues = self.get_issues_by_severity(IssueSeverity.WARNING)
+
+            lines.append("┌─ PROBLEMAS DETECTADOS " + "─" * 44 + "┐")
+            lines.append(f"│ Total: {len(self.issues)} ({len(critical)} críticos, {len(warnings_issues)} advertencias){' ' * 25}│")
+            lines.append("├" + "─" * 68 + "┤")
+
+            # Mostrar hasta 10 issues
+            for issue in self.issues[:10]:
+                icon = "❌" if issue.severity == IssueSeverity.CRITICAL else "⚠️"
+                loc = f"C{issue.measure}:B{issue.beat}"
+                desc = issue.description[:45] + "..." if len(issue.description) > 45 else issue.description
+                lines.append(f"│ {icon} [{loc:>7}] {desc:<53}│")
+
+            if len(self.issues) > 10:
+                lines.append(f"│ ... y {len(self.issues) - 10} problemas más{' ' * 48}│")
+
+            lines.append("└" + "─" * 68 + "┘")
+            lines.append("")
 
         # Errors and warnings
         if self.errors:
@@ -553,6 +666,174 @@ class MusicValidator:
         }
 
         return sum(scores[k] * weights[k] for k in weights)
+
+    def detect_detailed_issues(self) -> List[ValidationIssue]:
+        """
+        Detecta problemas específicos con ubicación exacta.
+
+        Analiza cada nota y detecta:
+        - Notas fuera de la escala
+        - Saltos grandes sin resolver
+        - Notas de tendencia sin resolver
+        - Problemas de rango
+
+        Returns:
+            Lista de ValidationIssue con ubicación exacta
+        """
+        issues = []
+        from music21 import note as m21_note, interval as m21_interval
+
+        try:
+            expected_key_obj = key.Key(self.expected_key, self.expected_mode)
+            scale_pitch_classes = {p.pitchClass for p in expected_key_obj.getPitches()}
+
+            # Obtener todas las notas con su ubicación
+            # Nota: flatten() elimina los Measures pero las notas mantienen measureNumber
+            all_notes = []
+            for elem in self.m21_score.flatten().notes:
+                if isinstance(elem, m21_note.Note):
+                    measure_num = elem.measureNumber if hasattr(elem, 'measureNumber') else 1
+                    beat = elem.beat if hasattr(elem, 'beat') else 1.0
+                    all_notes.append({
+                        'note': elem,
+                        'measure': measure_num,
+                        'beat': beat,
+                        'pitch': elem.pitch,
+                    })
+
+            # Detectar notas fuera de la escala
+            for i, note_info in enumerate(all_notes):
+                pitch = note_info['pitch']
+
+                # Verificar si está en la escala
+                if pitch.pitchClass not in scale_pitch_classes:
+                    issues.append(ValidationIssue(
+                        issue_type=IssueType.OUT_OF_KEY,
+                        severity=IssueSeverity.WARNING,
+                        measure=note_info['measure'],
+                        beat=note_info['beat'],
+                        note_index=i,
+                        description=f"Nota {pitch.nameWithOctave} fuera de {self.expected_key} {self.expected_mode}",
+                        actual_value=pitch.nameWithOctave,
+                        expected_value=f"nota en {self.expected_key} {self.expected_mode}",
+                        suggested_fixes=[
+                            f"Cambiar a nota diatónica cercana"
+                        ],
+                    ))
+
+            # Detectar saltos grandes sin resolver
+            for i in range(len(all_notes) - 1):
+                current = all_notes[i]
+                next_note = all_notes[i + 1]
+
+                intv = m21_interval.Interval(current['pitch'], next_note['pitch'])
+                semitones = abs(intv.semitones)
+
+                # Salto de más de una sexta (9 semitonos)
+                if semitones > 9:
+                    issues.append(ValidationIssue(
+                        issue_type=IssueType.LARGE_LEAP,
+                        severity=IssueSeverity.WARNING,
+                        measure=current['measure'],
+                        beat=current['beat'],
+                        note_index=i,
+                        description=f"Salto de {intv.niceName} ({semitones} semitonos)",
+                        actual_value=str(semitones),
+                        expected_value="<= 9 semitonos",
+                        context={'interval': intv.niceName, 'semitones': semitones},
+                        suggested_fixes=[
+                            "Reducir intervalo usando nota intermedia",
+                            "Resolver por grado conjunto en dirección opuesta"
+                        ],
+                    ))
+
+            # Verificar rango vocal
+            if all_notes:
+                pitches = [n['pitch'] for n in all_notes]
+                lowest = min(pitches, key=lambda p: p.ps)
+                highest = max(pitches, key=lambda p: p.ps)
+                ambitus = int(highest.ps - lowest.ps)
+
+                if ambitus > 24:  # Más de 2 octavas
+                    # Encontrar las notas extremas
+                    for note_info in all_notes:
+                        if note_info['pitch'].ps == highest.ps or note_info['pitch'].ps == lowest.ps:
+                            issues.append(ValidationIssue(
+                                issue_type=IssueType.RANGE_EXCEEDED,
+                                severity=IssueSeverity.SUGGESTION,
+                                measure=note_info['measure'],
+                                beat=note_info['beat'],
+                                description=f"Nota {note_info['pitch'].nameWithOctave} en extremo del rango",
+                                actual_value=note_info['pitch'].nameWithOctave,
+                                suggested_fixes=["Considerar octava diferente"],
+                            ))
+
+        except Exception as e:
+            # Si hay error, registrarlo como issue
+            issues.append(ValidationIssue(
+                issue_type=IssueType.OUT_OF_KEY,
+                severity=IssueSeverity.WARNING,
+                measure=1,
+                beat=1.0,
+                description=f"Error en análisis: {str(e)}",
+            ))
+
+        return issues
+
+    @classmethod
+    def from_musicxml(
+        cls,
+        musicxml_path: str,
+        expected_key: str,
+        expected_mode: str,
+        expected_meter: Tuple[int, int],
+        tolerance: float = 0.7,
+    ) -> "MusicValidator":
+        """
+        Crea un validador desde un archivo MusicXML.
+
+        Args:
+            musicxml_path: Ruta al archivo MusicXML
+            expected_key: Tonalidad esperada
+            expected_mode: Modo esperado
+            expected_meter: Métrica esperada
+            tolerance: Umbral de aceptación
+
+        Returns:
+            MusicValidator configurado
+        """
+        # Cargar MusicXML con music21
+        score = converter.parse(musicxml_path)
+
+        # Crear una instancia "vacía" sin staff de abjad
+        instance = cls.__new__(cls)
+        instance.staff = None
+        instance.lilypond_formatter = None
+        instance.expected_key = expected_key
+        instance.expected_mode = expected_mode
+        instance.expected_meter = expected_meter
+        instance.tolerance = tolerance
+        instance.m21_score = score
+
+        return instance
+
+    def validate_all_with_issues(self) -> ValidationReport:
+        """
+        Ejecuta todas las validaciones incluyendo detección de issues detallados.
+
+        Returns:
+            ValidationReport con lista completa de issues
+        """
+        # Ejecutar validación básica
+        report = self.validate_all()
+
+        # Detectar issues detallados
+        detailed_issues = self.detect_detailed_issues()
+
+        # Añadir issues al reporte
+        report.issues = detailed_issues
+
+        return report
 
 
 class AutoCorrector:

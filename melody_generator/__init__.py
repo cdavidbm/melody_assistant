@@ -62,7 +62,24 @@ from .validation import (
     RangeValidation,
     ModeValidation,
     AutoCorrector,
+    ValidationIssue,
+    IssueType,
+    IssueSeverity,
 )
+
+# Sistema de memoria y corrección
+from .memory import (
+    DecisionMemory,
+    Decision,
+    DecisionType,
+    Alternative,
+    ScoreBreakdown,
+    HarmonicContext,
+    MelodicContext,
+    MetricContext,
+)
+from .musicxml import MusicXMLExporter
+from .correction import SurgicalCorrector, CorrectionRound, CorrectionResult
 
 # Factories y utilidades
 from .loaders import MarkovModelLoader
@@ -151,6 +168,18 @@ from .sequences import (
     SequenceGenerator,
     SequenceType,
     MelodicSequence,
+)
+
+# Constantes de teoría musical
+from .constants import (
+    VOICE_LEADING_SCORES,
+    HARMONIC_SCORES,
+    TENDENCY_TONES,
+    DEFAULT_SCORING_WEIGHTS,
+    RHYTHM_PROBABILITIES,
+    VALIDATION_THRESHOLDS,
+    get_voice_leading_score,
+    get_rhythm_probability,
 )
 
 __version__ = "3.2.0"
@@ -245,4 +274,13 @@ __all__ = [
     # Utilidades
     "MarkovModelLoader",
     "AbjadMusic21Converter",
+    # Constantes de teoría musical
+    "VOICE_LEADING_SCORES",
+    "HARMONIC_SCORES",
+    "TENDENCY_TONES",
+    "DEFAULT_SCORING_WEIGHTS",
+    "RHYTHM_PROBABILITIES",
+    "VALIDATION_THRESHOLDS",
+    "get_voice_leading_score",
+    "get_rhythm_probability",
 ]

@@ -3,11 +3,14 @@ Conversores de formato entre Abjad y music21.
 Centraliza la lógica de conversión para reutilización.
 """
 
+import logging
 import re
 from typing import Tuple
 
 import abjad
 from music21 import stream, note as m21_note, meter as m21_meter, key
+
+logger = logging.getLogger(__name__)
 
 
 class AbjadMusic21Converter:
@@ -42,19 +45,32 @@ class AbjadMusic21Converter:
         base_note = base_match.group(1).upper()
 
         # Manejar alteraciones
+        # LilyPond soporta tanto notación holandesa (cis, bes) como inglesa (cs, bf)
         accidental_str = ""
-        if "isis" in lily_pitch:
+
+        # Extraer parte de alteración (todo entre nota base y octava)
+        alt_part = lily_pitch[1:].replace("'", "").replace(",", "")
+
+        if "isis" in lily_pitch or "ss" in alt_part:
             accidental_str = "##"
         elif "is" in lily_pitch:
+            # Notación holandesa: cis, dis, fis, gis, ais
             accidental_str = "#"
-        elif "eses" in lily_pitch or "asas" in lily_pitch:
+        elif alt_part == "s" and base_note not in ["A", "E"]:
+            # Notación inglesa: cs, ds, fs, gs (pero no es ni as que son bemoles)
+            accidental_str = "#"
+        elif "eses" in lily_pitch or "asas" in lily_pitch or "ff" in alt_part:
             accidental_str = "--"
-        elif "es" in lily_pitch or "as" in lily_pitch.lower():
-            # Verificar que no es parte de "ases" o similar
-            if base_note in ["A", "E"] and lily_pitch.endswith("s"):
+        elif alt_part == "f" or (base_note == "B" and alt_part == ""):
+            # bf o b solo (si b está sin alteración, verificar contexto)
+            if alt_part == "f":
                 accidental_str = "-"
-            elif "es" in lily_pitch:
-                accidental_str = "-"
+        elif "es" in lily_pitch:
+            # Notación holandesa: es, bes, des, ges, aes
+            accidental_str = "-"
+        elif alt_part == "s" and base_note in ["A", "E"]:
+            # as y es son bemoles en notación holandesa
+            accidental_str = "-"
 
         # Calcular octava (c, = C2; c = C3; c' = C4; c'' = C5)
         num_apostrophes = lily_pitch.count("'")
@@ -141,8 +157,8 @@ class AbjadMusic21Converter:
         try:
             ks = key.Key(key_name, mode)
             part.insert(0, ks)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"No se pudo crear key signature para {key_name} {mode}: {e}")
 
         # Calcular duración esperada por compás
         expected_measure_duration = meter_tuple[0] / meter_tuple[1] * 4.0
@@ -187,8 +203,8 @@ class AbjadMusic21Converter:
                     current_measure = stream.Measure(number=measure_num)
                     measure_duration = 0.0
 
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error convirtiendo staff de Abjad a music21: {e}")
 
         # Añadir último compás si tiene contenido
         if len(current_measure.notesAndRests) > 0:
