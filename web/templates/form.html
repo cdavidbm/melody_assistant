@@ -514,17 +514,80 @@
                 <input type="hidden" name="generation_mode" value="develop">
 
                 <div class="section-card">
-                    <div class="mode-info">
+                    <div class="mode-info develop-info">
                         <svg class="mode-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="10"/>
                             <path d="M12 16v-4"/>
                             <path d="M12 8h.01"/>
                         </svg>
                         <div class="mode-info-text">
-                            <strong>Desarrolla tu idea musical.</strong> Escribe un motivo o melodia en notacion LilyPond y el sistema lo desarrollara aplicando variaciones motivicas, manteniendo la esencia de tu idea original.
+                            <strong>Desarrolla tu idea musical.</strong> Escribe tu motivo en notacion LilyPond. El sistema extraera tu idea y la desarrollara aplicando teoria musical, conservando la esencia de tu motivo original.
                         </div>
                     </div>
 
+                    <!-- Required Parameters Section -->
+                    <div class="required-params-section">
+                        <div class="section-header-inline">
+                            <span class="section-title">Parametros Obligatorios</span>
+                            <span class="required-badge">Requerido</span>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label required-label">Tonalidad</label>
+                                <select name="dev_key" class="form-select" required>
+                                    {% for k in keys %}
+                                    <option value="{{ k }}" {{ 'selected' if k == 'C' else '' }}>{{ k }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label required-label">Modo / Escala</label>
+                                <select name="dev_mode" class="form-select" required>
+                                    <option value="1" selected>Mayor</option>
+                                    <option value="6">Menor</option>
+                                    <option value="2">Dorico</option>
+                                    <option value="3">Frigio</option>
+                                    <option value="4">Lidio</option>
+                                    <option value="5">Mixolidio</option>
+                                    <option value="8">Menor Armonica</option>
+                                    <option value="13">Frigio Dominante</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label required-label">Metrica</label>
+                                <div class="meter-input">
+                                    <select name="dev_meter_num" class="form-select" required>
+                                        {% for n in [2, 3, 4, 5, 6, 7, 9, 12] %}
+                                        <option value="{{ n }}" {{ 'selected' if n == 4 else '' }}>{{ n }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <span class="meter-divider">/</span>
+                                    <select name="dev_meter_den" class="form-select" required>
+                                        {% for d in [2, 4, 8, 16] %}
+                                        <option value="{{ d }}" {{ 'selected' if d == 4 else '' }}>{{ d }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label required-label">Compases a generar</label>
+                                <select name="dev_num_measures" class="form-select" required>
+                                    <option value="4">4 compases</option>
+                                    <option value="8" selected>8 compases</option>
+                                    <option value="12">12 compases</option>
+                                    <option value="16">16 compases</option>
+                                    <option value="24">24 compases</option>
+                                    <option value="32">32 compases</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- LilyPond Input -->
                     <div class="lilypond-editor">
                         <div class="editor-header">
                             <svg class="editor-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -532,7 +595,7 @@
                                 <path d="m15 5 4 4"/>
                             </svg>
                             <div>
-                                <div class="editor-title">Tu Idea Musical</div>
+                                <div class="editor-title">Tu Motivo Musical <span class="required-badge">Requerido</span></div>
                                 <div class="editor-subtitle">Escribe en formato LilyPond</div>
                             </div>
                         </div>
@@ -547,96 +610,71 @@
                         </div>
 
                         <div class="editor-help">
-                            <div class="help-title">
+                            <a href="https://lilypond.org/doc/v2.24/Documentation/learning/simple-notation" target="_blank" class="lilypond-docs-link">
                                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
-                                    <path d="M12 17h.01"/>
+                                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                                    <polyline points="15 3 21 3 21 9"/>
+                                    <line x1="10" y1="14" x2="21" y2="3"/>
                                 </svg>
-                                Ejemplos de notacion
-                            </div>
-                            <div class="help-examples">
-                                <span class="help-example" onclick="insertExample(this)">c'4 d' e' f'</span>
-                                <span class="help-example" onclick="insertExample(this)">g'2. fis'4</span>
-                                <span class="help-example" onclick="insertExample(this)">e'8 d' c' b | a4 g</span>
-                                <span class="help-example" onclick="insertExample(this)">a'4. b'8 c''4 a'</span>
-                            </div>
-                            <div class="help-note">
-                                <code>c d e f g a b</code> = notas |
-                                <code>'</code> = octava superior |
-                                <code>1 2 4 8 16</code> = duraciones |
-                                <code>.</code> = puntillo |
-                                <code>|</code> = barra de compas
+                                Consulta la documentacion de LilyPond
+                            </a>
+                            <div class="help-note-minimal">
+                                Sintaxis basica: <code>c'4</code> = Do octava 4, negra | <code>d''2</code> = Re octava 5, blanca | <code>|</code> = barra
                             </div>
                         </div>
                     </div>
 
-                    <!-- Development Options -->
-                    <div class="develop-options">
-                        <span class="section-title">Opciones de Desarrollo</span>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Compases a generar</label>
-                                <select name="dev_num_measures" class="form-select">
-                                    <option value="4">4 compases</option>
-                                    <option value="8" selected>8 compases</option>
-                                    <option value="12">12 compases</option>
-                                    <option value="16">16 compases</option>
-                                </select>
+                    <!-- Optional: Additional Options -->
+                    <div class="optional-params-section">
+                        <div class="section-header-inline collapsible-inline collapsed" onclick="toggleOptionalSection(this)">
+                            <div class="section-header-left">
+                                <span class="section-title">Opciones Adicionales</span>
+                                <span class="optional-badge">Opcional</span>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Intensidad de variacion</label>
-                                <select name="dev_variation_intensity" class="form-select">
-                                    <option value="1">Conservadora (pocas variaciones)</option>
-                                    <option value="2" selected>Moderada (equilibrio)</option>
-                                    <option value="3">Creativa (muchas variaciones)</option>
-                                </select>
-                            </div>
+                            <svg class="section-chevron" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m6 9 6 6 6-6"/>
+                            </svg>
                         </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Compas</label>
-                                <div class="meter-input">
-                                    <select name="dev_meter_num" class="form-select">
-                                        {% for n in [2, 3, 4, 5, 6, 7, 9, 12] %}
-                                        <option value="{{ n }}" {{ 'selected' if n == 4 else '' }}>{{ n }}</option>
-                                        {% endfor %}
+                        <div class="optional-note" style="display: none;">
+                            Para mayor control sobre el resultado, puedes configurar opciones adicionales. Los valores no especificados usaran los valores por defecto del sistema.
+                        </div>
+                        <div class="optional-content" style="display: none;">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Intensidad de variacion</label>
+                                    <select name="dev_variation_intensity" class="form-select">
+                                        <option value="1">Conservadora (pocas variaciones)</option>
+                                        <option value="2" selected>Moderada (equilibrio)</option>
+                                        <option value="3">Creativa (muchas variaciones)</option>
                                     </select>
-                                    <span class="meter-divider">/</span>
-                                    <select name="dev_meter_den" class="form-select">
-                                        {% for d in [2, 4, 8, 16] %}
-                                        <option value="{{ d }}" {{ 'selected' if d == 4 else '' }}>{{ d }}</option>
-                                        {% endfor %}
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Estilo de bajo</label>
+                                    <select name="dev_bass_style" class="form-select">
+                                        <option value="simple" selected>Simple</option>
+                                        <option value="alberti">Alberti</option>
+                                        <option value="walking">Walking</option>
+                                        <option value="contrapunto">Contrapunto</option>
                                     </select>
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Tonalidad de salida</label>
-                                <select name="dev_key" class="form-select">
-                                    <option value="auto" selected>Detectar automaticamente</option>
-                                    {% for k in keys %}
-                                    <option value="{{ k }}">{{ k }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </div>
 
-                        <div class="form-group">
-                            <label class="form-checkbox-wrapper">
-                                <input type="checkbox" name="dev_add_bass" class="form-checkbox">
-                                <span class="form-checkbox-label">Agregar linea de bajo armonico</span>
-                            </label>
-                        </div>
-
-                        <div class="form-row">
                             <div class="form-group">
-                                <label class="form-label">Titulo</label>
-                                <input type="text" name="dev_title" class="form-input" value="Desarrollo de Idea" placeholder="Titulo de la pieza">
+                                <label class="form-checkbox-wrapper">
+                                    <input type="checkbox" name="dev_add_bass" class="form-checkbox">
+                                    <span class="form-checkbox-label">Agregar linea de bajo armonico</span>
+                                </label>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Compositor</label>
-                                <input type="text" name="dev_composer" class="form-input" value="CompositorIA" placeholder="Tu nombre">
+
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label class="form-label">Titulo</label>
+                                    <input type="text" name="dev_title" class="form-input" value="Desarrollo de Idea" placeholder="Titulo de la pieza">
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Compositor</label>
+                                    <input type="text" name="dev_composer" class="form-input" value="CompositorIA" placeholder="Tu nombre">
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -644,14 +682,14 @@
 
                 <!-- Form Actions -->
                 <div class="form-actions">
-                    <button type="submit" class="btn-generate">
+                    <button type="submit" class="btn-generate btn-develop">
                         <span class="btn-text">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M12 3v12"/>
                                 <path d="m8 11 4 4 4-4"/>
                                 <path d="M8 21h8"/>
                             </svg>
-                            Desarrollar Idea
+                            Desarrollar Motivo
                         </span>
                         <span class="btn-loading">
                             <span class="spinner"></span>
@@ -866,6 +904,22 @@
     function toggleSection(header) {
         const card = header.closest('.section-card');
         card.classList.toggle('collapsed');
+    }
+
+    // Toggle optional section (for develop mode)
+    function toggleOptionalSection(header) {
+        header.classList.toggle('collapsed');
+        const section = header.closest('.optional-params-section');
+        const content = section.querySelector('.optional-content');
+        const note = section.querySelector('.optional-note');
+
+        if (header.classList.contains('collapsed')) {
+            content.style.display = 'none';
+            if (note) note.style.display = 'none';
+        } else {
+            content.style.display = 'block';
+            if (note) note.style.display = 'block';
+        }
     }
 
     // Reset form

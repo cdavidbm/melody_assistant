@@ -39,6 +39,22 @@ from melody_generator.cli import MODE_MAP, COMPOSER_MAP
 from melody_generator.ornamentation import OrnamentStyle
 from melody_generator.bass import BassStyle, BassConfig
 
+# Import the canonical schema
+from melody_generator.schema import (
+    GenerationInput,
+    form_to_generation_input,
+    develop_form_to_generation_input,
+    prompt_response_to_generation_input,
+    MODE_NUM_TO_NAME,
+)
+
+# Import LilyPond validator
+from melody_generator.lilypond_validator import (
+    validate_motif_for_development,
+    quick_syntax_check,
+    ValidationResult,
+)
+
 app = Flask(__name__)
 
 # Directory for output files
@@ -142,6 +158,212 @@ def get_random_defaults():
     }
 
 
+def generate_from_input(gen_input: GenerationInput) -> dict:
+    """
+    Core generation function that takes a GenerationInput and produces the melody.
+
+    This is the central point where all input modes converge:
+    - Form (spontaneous) → GenerationInput → here
+    - Develop (user motif) → GenerationInput → here
+    - Prompt (AI interpreted) → GenerationInput → here
+
+    Returns a dict with all the results needed for rendering.
+    """
+    # Map string values to enums
+    impulse_map = {
+        "tetic": ImpulseType.TETIC,
+        "anacroustic": ImpulseType.ANACROUSTIC,
+        "acephalous": ImpulseType.ACEPHALOUS,
+    }
+    impulse_type = impulse_map.get(gen_input.impulse, ImpulseType.TETIC)
+
+    bass_style_map = {
+        "simple": BassStyle.SIMPLE,
+        "alberti": BassStyle.ALBERTI,
+        "walking": BassStyle.WALKING,
+        "contrapunto": BassStyle.CONTRAPUNTO,
+    }
+    bass_style = bass_style_map.get(gen_input.bass_style, BassStyle.SIMPLE)
+
+    ornament_map = {
+        "none": OrnamentStyle.NONE,
+        "minimal": OrnamentStyle.MINIMAL,
+        "classical": OrnamentStyle.CLASSICAL,
+        "baroque": OrnamentStyle.BAROQUE,
+        "romantic": OrnamentStyle.ROMANTIC,
+    }
+    ornament_style = ornament_map.get(gen_input.ornamentation_style, OrnamentStyle.NONE)
+
+    # Build configuration from GenerationInput
+    config = GenerationConfig(
+        tonal=TonalConfig(key_name=gen_input.key, mode=gen_input.mode),
+        meter=MeterConfig(
+            meter_tuple=(gen_input.meter_num, gen_input.meter_den),
+            num_measures=gen_input.num_measures,
+        ),
+        rhythm=RhythmConfig(
+            complexity=gen_input.complexity,
+            use_rests=gen_input.use_rests,
+            rest_probability=gen_input.rest_probability,
+        ),
+        melody=MelodyConfig(
+            impulse_type=impulse_type,
+            climax_position=gen_input.climax_position,
+            climax_intensity=gen_input.climax_intensity,
+            max_interval=gen_input.max_interval,
+            infraction_rate=gen_input.infraction_rate,
+            use_tenoris=gen_input.use_tenoris,
+            tenoris_probability=0.2,
+        ),
+        motif=MotifConfig(
+            use_motivic_variations=True,
+            variation_probability=0.4,
+            variation_freedom=gen_input.variation_freedom,
+        ),
+        markov=MarkovConfig(
+            enabled=gen_input.use_markov,
+            composer=gen_input.markov_composer,
+            weight=gen_input.markov_weight,
+            order=gen_input.markov_order,
+        ),
+    )
+
+    # Create expression config
+    expression_config = ExpressionConfig(
+        use_ornamentation=(gen_input.ornamentation_style != "none"),
+        ornamentation_style=gen_input.ornamentation_style if gen_input.ornamentation_style != "none" else "classical",
+        use_dynamics=gen_input.use_dynamics,
+        base_dynamic=gen_input.base_dynamic,
+        climax_dynamic=gen_input.climax_dynamic,
+        use_articulations=gen_input.use_articulations,
+    )
+
+    # Create architect
+    architect = MelodicArchitect(config=config, expression_config=expression_config)
+    lilypond_code = None
+
+    # Check if this is musical_idea mode (user provided notes to develop)
+    if gen_input.input_type == "musical_idea" and gen_input.user_motif:
+        # Use develop_user_motif method
+        staff, lilypond_code = architect.develop_user_motif(
+            user_motif=gen_input.user_motif,
+            num_measures=gen_input.num_measures,
+            variation_freedom=gen_input.variation_freedom,
+            detect_key=False,  # Key is now required
+            add_bass=gen_input.add_bass,
+            title=gen_input.title,
+            composer=gen_input.composer,
+        )
+    else:
+        # Generate melody with chosen method
+        if gen_input.generation_method == "genetic":
+            staff = architect.generate_period_genetic(
+                generations=gen_input.genetic_generations,
+                population_size=gen_input.genetic_population,
+                use_markov_polish=gen_input.genetic_markov_polish,
+            )
+        elif gen_input.generation_method == "hierarchical":
+            result = architect.generate_period_hierarchical()
+            staff = result[0] if isinstance(result, tuple) else result
+        else:  # traditional
+            staff = architect.generate_period()
+
+        # Add bass if requested
+        if gen_input.add_bass:
+            bass_config = BassConfig(
+                style=bass_style,
+                octave=gen_input.bass_octave,
+            )
+            lilypond_code = architect.generate_period_with_bass(
+                bass_style=bass_style,
+                bass_config=bass_config,
+                return_staffs=False,
+            )
+
+        # Apply expression if any expression option is enabled
+        if expression_config.use_ornamentation or expression_config.use_dynamics or expression_config.use_articulations:
+            staff = architect.apply_expression(staff)
+
+        # Format as LilyPond (if not already generated with bass)
+        if lilypond_code is None:
+            lilypond_code = architect.format_as_lilypond(
+                staff,
+                title=gen_input.title,
+                composer=gen_input.composer,
+            )
+        else:
+            # Add header to bass lilypond code
+            header_code = ""
+            if gen_input.title or gen_input.composer:
+                header_code = "\\header {\n"
+                if gen_input.title:
+                    header_code += f'  title = "{gen_input.title}"\n'
+                if gen_input.composer:
+                    header_code += f'  composer = "{gen_input.composer}"\n'
+                header_code += "}\n\n"
+            lilypond_code = header_code + lilypond_code
+
+    # Save files
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Determine file prefix based on input type
+    prefix_map = {"form": "melody", "musical_idea": "develop", "prompt": "prompt"}
+    mode_prefix = prefix_map.get(gen_input.input_type, "melody")
+    base_filename = f"{mode_prefix}_{gen_input.key}_{gen_input.mode}_{timestamp}"
+    ly_filepath = OUTPUT_DIR / f"{base_filename}.ly"
+
+    with open(ly_filepath, "w", encoding="utf-8") as f:
+        f.write(lilypond_code)
+
+    # Run LilyPond to generate PDF and MIDI
+    pdf_path = None
+    midi_path = None
+    lilypond_error = None
+
+    try:
+        result = subprocess.run(
+            [
+                "lilypond",
+                "-dno-point-and-click",
+                f"--output={OUTPUT_DIR / base_filename}",
+                str(ly_filepath),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        # Check if files were created
+        potential_pdf = OUTPUT_DIR / f"{base_filename}.pdf"
+        potential_midi = OUTPUT_DIR / f"{base_filename}.midi"
+
+        if potential_pdf.exists():
+            pdf_path = f"{base_filename}.pdf"
+        if potential_midi.exists():
+            midi_path = f"{base_filename}.midi"
+
+        if result.returncode != 0:
+            lilypond_error = result.stderr
+
+    except subprocess.TimeoutExpired:
+        lilypond_error = "LilyPond timed out after 60 seconds"
+    except FileNotFoundError:
+        lilypond_error = "LilyPond not found. Please install LilyPond."
+
+    return {
+        "success": True,
+        "lilypond_code": lilypond_code,
+        "pdf_path": pdf_path,
+        "midi_path": midi_path,
+        "ly_filename": f"{base_filename}.ly",
+        "lilypond_error": lilypond_error,
+        "key_name": gen_input.key,
+        "mode": gen_input.mode,
+        "meter": f"{gen_input.meter_num}/{gen_input.meter_den}",
+        "num_measures": gen_input.num_measures,
+        "generation_input": gen_input,  # Keep the original input for debugging
+    }
+
+
 @app.route("/")
 def index():
     """Render the main form with random defaults."""
@@ -166,7 +388,12 @@ def index():
 
 @app.route("/generate", methods=["POST"])
 def generate():
-    """Generate a melody based on form data."""
+    """
+    Generate a melody based on form data.
+
+    Unified entry point that converts form data to GenerationInput,
+    then uses the centralized generate_from_input function.
+    """
     try:
         # Check generation mode
         generation_mode = request.form.get("generation_mode", "spontaneous")
@@ -174,214 +401,20 @@ def generate():
         if generation_mode == "develop":
             return generate_develop_mode()
 
-        # Parse form data (spontaneous mode)
-        key_name = request.form.get("key", "C")
-        mode = MODE_MAP.get(request.form.get("mode", "1"), "major")
-        meter_num = int(request.form.get("meter_num", 4))
-        meter_den = int(request.form.get("meter_den", 4))
-        num_measures = int(request.form.get("num_measures", 8))
-        complexity = int(request.form.get("complexity", 2))
-        impulse_str = request.form.get("impulse", "tetic")
-        use_rests = request.form.get("use_rests") == "on"
-        use_tenoris = request.form.get("use_tenoris") == "on"
-        use_markov = request.form.get("use_markov") == "on"
-        composer = request.form.get("composer", "bach")
-        markov_weight = float(request.form.get("markov_weight", 0.5))
-        markov_order = int(request.form.get("markov_order", 2))
-        climax_position = float(request.form.get("climax_position", 0.75))
-        variation_freedom = int(request.form.get("variation_freedom", 2))
-        title = request.form.get("title", "Melodía Generada")
-        score_composer = request.form.get("score_composer", "MelodicArchitect AI")
-        generation_method = request.form.get("generation_method", "traditional")
+        # Convert form data to GenerationInput (canonical JSON format)
+        gen_input = form_to_generation_input(request.form.to_dict())
 
-        # Parse genetic options
-        genetic_generations = int(request.form.get("genetic_generations", 15))
-        genetic_population = int(request.form.get("genetic_population", 30))
-        genetic_markov_polish = request.form.get("genetic_markov_polish") == "on"
+        # Log the JSON input for debugging
+        print(f"[Form Mode] GenerationInput JSON:\n{gen_input.to_json()}")
 
-        # Parse bass options (independent checkbox)
-        add_bass = request.form.get("add_bass") == "on"
-        bass_style_str = request.form.get("bass_style", "simple")
-        bass_octave = int(request.form.get("bass_octave", 3))
+        # Generate using the centralized function
+        result = generate_from_input(gen_input)
 
-        # Parse expression options
-        ornamentation_style = request.form.get("ornamentation_style", "none")
-        use_dynamics = request.form.get("use_dynamics") == "on"
-        base_dynamic = request.form.get("base_dynamic", "mf")
-        climax_dynamic = request.form.get("climax_dynamic", "f")
-        use_articulations = request.form.get("use_articulations") == "on"
-
-        # Map impulse type
-        impulse_map = {
-            "tetic": ImpulseType.TETIC,
-            "anacroustic": ImpulseType.ANACROUSTIC,
-            "acephalous": ImpulseType.ACEPHALOUS,
-        }
-        impulse_type = impulse_map.get(impulse_str, ImpulseType.TETIC)
-
-        # Map bass style
-        bass_style_map = {
-            "simple": BassStyle.SIMPLE,
-            "alberti": BassStyle.ALBERTI,
-            "walking": BassStyle.WALKING,
-            "contrapunto": BassStyle.CONTRAPUNTO,
-        }
-        bass_style = bass_style_map.get(bass_style_str, BassStyle.SIMPLE)
-
-        # Create configuration
-        config = GenerationConfig(
-            tonal=TonalConfig(key_name=key_name, mode=mode),
-            meter=MeterConfig(
-                meter_tuple=(meter_num, meter_den),
-                num_measures=num_measures,
-            ),
-            rhythm=RhythmConfig(
-                complexity=complexity,
-                use_rests=use_rests,
-                rest_probability=0.15,
-            ),
-            melody=MelodyConfig(
-                impulse_type=impulse_type,
-                climax_position=climax_position,
-                climax_intensity=1.5,
-                max_interval=6,
-                infraction_rate=0.1,
-                use_tenoris=use_tenoris,
-                tenoris_probability=0.2,
-            ),
-            motif=MotifConfig(
-                use_motivic_variations=True,
-                variation_probability=0.4,
-                variation_freedom=variation_freedom,
-            ),
-            markov=MarkovConfig(
-                enabled=use_markov,
-                composer=composer,
-                weight=markov_weight,
-                order=markov_order,
-            ),
-        )
-
-        # Create expression config
-        expression_config = ExpressionConfig(
-            use_ornamentation=(ornamentation_style != "none"),
-            ornamentation_style=ornamentation_style if ornamentation_style != "none" else "classical",
-            use_dynamics=use_dynamics,
-            base_dynamic=base_dynamic,
-            climax_dynamic=climax_dynamic,
-            use_articulations=use_articulations,
-        )
-
-        # Generate melody
-        architect = MelodicArchitect(config=config, expression_config=expression_config)
-        lilypond_code = None
-
-        # Step 1: Generate melody with chosen method
-        if generation_method == "genetic":
-            staff = architect.generate_period_genetic(
-                generations=genetic_generations,
-                population_size=genetic_population,
-                use_markov_polish=genetic_markov_polish,
-            )
-        elif generation_method == "hierarchical":
-            result = architect.generate_period_hierarchical()
-            staff = result[0] if isinstance(result, tuple) else result
-        else:  # traditional
-            staff = architect.generate_period()
-
-        # Step 2: Add bass if requested (can combine with any method)
-        if add_bass:
-            bass_config = BassConfig(
-                style=bass_style,
-                octave=bass_octave,
-            )
-            lilypond_code = architect.generate_period_with_bass(
-                bass_style=bass_style,
-                bass_config=bass_config,
-                return_staffs=False,
-            )
-
-        # Apply expression if any expression option is enabled
-        if expression_config.use_ornamentation or expression_config.use_dynamics or expression_config.use_articulations:
-            staff = architect.apply_expression(staff)
-
-        # Format as LilyPond (if not already generated with bass)
-        if lilypond_code is None:
-            lilypond_code = architect.format_as_lilypond(
-                staff,
-                title=title,
-                composer=score_composer,
-            )
-        else:
-            # Add header to bass lilypond code
-            header_code = ""
-            if title or score_composer:
-                header_code = "\\header {\n"
-                if title:
-                    header_code += f'  title = "{title}"\n'
-                if score_composer:
-                    header_code += f'  composer = "{score_composer}"\n'
-                header_code += "}\n\n"
-            lilypond_code = header_code + lilypond_code
-
-        # Save files
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_filename = f"melody_{key_name}_{mode}_{timestamp}"
-        ly_filepath = OUTPUT_DIR / f"{base_filename}.ly"
-
-        with open(ly_filepath, "w", encoding="utf-8") as f:
-            f.write(lilypond_code)
-
-        # Run LilyPond to generate PDF and MIDI
-        pdf_path = None
-        midi_path = None
-        lilypond_error = None
-
-        try:
-            result = subprocess.run(
-                [
-                    "lilypond",
-                    "-dno-point-and-click",
-                    f"--output={OUTPUT_DIR / base_filename}",
-                    str(ly_filepath),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-
-            # Check if files were created
-            potential_pdf = OUTPUT_DIR / f"{base_filename}.pdf"
-            potential_midi = OUTPUT_DIR / f"{base_filename}.midi"
-
-            if potential_pdf.exists():
-                pdf_path = f"{base_filename}.pdf"
-            if potential_midi.exists():
-                midi_path = f"{base_filename}.midi"
-
-            if result.returncode != 0:
-                lilypond_error = result.stderr
-
-        except subprocess.TimeoutExpired:
-            lilypond_error = "LilyPond timed out after 60 seconds"
-        except FileNotFoundError:
-            lilypond_error = "LilyPond not found. Please install LilyPond."
-
-        return render_template(
-            "result.html",
-            success=True,
-            lilypond_code=lilypond_code,
-            pdf_path=pdf_path,
-            midi_path=midi_path,
-            ly_filename=f"{base_filename}.ly",
-            lilypond_error=lilypond_error,
-            key_name=key_name,
-            mode=mode,
-            meter=f"{meter_num}/{meter_den}",
-            num_measures=num_measures,
-        )
+        return render_template("result.html", **result)
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return render_template(
             "result.html",
             success=False,
@@ -390,129 +423,85 @@ def generate():
 
 
 def generate_develop_mode():
-    """Generate a melody by developing user-provided motif."""
-    try:
-        # Parse develop mode form data
-        user_motif = request.form.get("user_motif", "").strip()
-        num_measures = int(request.form.get("dev_num_measures", 8))
-        variation_intensity = int(request.form.get("dev_variation_intensity", 2))
-        meter_num = int(request.form.get("dev_meter_num", 4))
-        meter_den = int(request.form.get("dev_meter_den", 4))
-        key_name = request.form.get("dev_key", "auto")
-        add_bass = request.form.get("dev_add_bass") == "on"
-        title = request.form.get("dev_title", "Desarrollo de Idea")
-        score_composer = request.form.get("dev_composer", "CompositorIA")
+    """
+    Generate a melody by developing user-provided motif.
 
+    Pipeline:
+    1. Get required parameters (key, mode, meter, measures, motif)
+    2. Quick syntax validation
+    3. Full validation: LilyPond → MIDI → Music21
+    4. Convert to GenerationInput
+    5. Generate using centralized function
+    """
+    try:
+        # Step 1: Get required parameters
+        user_motif = request.form.get("user_motif", "").strip()
         if not user_motif:
             raise ValueError("No se proporcionó ningún motivo para desarrollar")
 
-        # Map variation intensity to freedom level
-        variation_freedom = variation_intensity
+        # Get required fields (these are now mandatory in the form)
+        key_name = request.form.get("dev_key", "C")
+        mode_num = request.form.get("dev_mode", "1")
+        meter_num = int(request.form.get("dev_meter_num", 4))
+        meter_den = int(request.form.get("dev_meter_den", 4))
 
-        # Create basic config (will be overridden by motif analysis if key="auto")
-        detected_key = key_name if key_name != "auto" else "C"
-        detected_mode = "major"
+        # Map mode number to name
+        mode_name = MODE_NUM_TO_NAME.get(mode_num, "major")
 
-        config = GenerationConfig(
-            tonal=TonalConfig(key_name=detected_key, mode=detected_mode),
-            meter=MeterConfig(
-                meter_tuple=(meter_num, meter_den),
-                num_measures=num_measures,
-            ),
-            rhythm=RhythmConfig(
-                complexity=2,
-                use_rests=True,
-                rest_probability=0.1,
-            ),
-            melody=MelodyConfig(
-                impulse_type=ImpulseType.TETIC,
-                climax_position=0.65,
-                climax_intensity=1.3,
-                max_interval=6,
-                infraction_rate=0.05,
-                use_tenoris=False,
-            ),
-            motif=MotifConfig(
-                use_motivic_variations=True,
-                variation_probability=0.5 if variation_intensity == 2 else (0.3 if variation_intensity == 1 else 0.7),
-                variation_freedom=variation_freedom,
-            ),
-            markov=MarkovConfig(enabled=False),
+        # Step 2: Quick syntax validation (fast, no compilation)
+        is_valid, error = quick_syntax_check(user_motif)
+        if not is_valid:
+            raise ValueError(f"Error de sintaxis en tu motivo: {error}")
+
+        # Step 3: Full validation with LilyPond and Music21
+        print(f"[Develop Mode] Validating LilyPond: key={key_name}, mode={mode_name}, meter={meter_num}/{meter_den}")
+        validation_result = validate_motif_for_development(
+            fragment=user_motif,
+            key_name=key_name,
+            mode=mode_name,
+            meter_num=meter_num,
+            meter_den=meter_den,
         )
 
-        # Create architect and develop the motif
-        architect = MelodicArchitect(config=config)
+        if not validation_result.is_valid:
+            raise ValueError(f"Error al validar tu motivo: {validation_result.error_message}")
 
-        # Use develop_user_motif method
-        staff, lilypond_code = architect.develop_user_motif(
-            user_motif=user_motif,
-            num_measures=num_measures,
-            variation_freedom=variation_freedom,
-            detect_key=(key_name == "auto"),
-            add_bass=add_bass,
-            title=title,
-            composer=score_composer,
-        )
+        # Log validation warnings
+        if validation_result.warnings:
+            for warning in validation_result.warnings:
+                print(f"[Develop Mode] Warning: {warning}")
 
-        # Get detected key info for display
-        display_key = architect.scale_manager.key_name
-        display_mode = architect.scale_manager.mode
+        # Mark motif as validated in the form data
+        form_data = request.form.to_dict()
+        form_data["user_motif_validated"] = True
 
-        # Save files
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_filename = f"develop_{display_key}_{display_mode}_{timestamp}"
-        ly_filepath = OUTPUT_DIR / f"{base_filename}.ly"
+        # Step 4: Convert form data to GenerationInput (canonical JSON format)
+        gen_input = develop_form_to_generation_input(form_data)
+        gen_input.user_motif_validated = True
 
-        with open(ly_filepath, "w", encoding="utf-8") as f:
-            f.write(lilypond_code)
+        # Log validation result
+        print(f"[Develop Mode] Validation passed:")
+        print(f"  - Notes: {validation_result.note_count}")
+        print(f"  - Duration: {validation_result.duration_beats} beats")
+        print(f"  - Detected key: {validation_result.detected_key} {validation_result.detected_mode}")
 
-        # Run LilyPond
-        pdf_path = None
-        midi_path = None
-        lilypond_error = None
+        # Log the JSON input for debugging
+        print(f"[Develop Mode] GenerationInput JSON:\n{gen_input.to_json()}")
 
-        try:
-            result = subprocess.run(
-                [
-                    "lilypond",
-                    "-dno-point-and-click",
-                    f"--output={OUTPUT_DIR / base_filename}",
-                    str(ly_filepath),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+        # Step 5: Generate using the centralized function
+        result = generate_from_input(gen_input)
 
-            potential_pdf = OUTPUT_DIR / f"{base_filename}.pdf"
-            potential_midi = OUTPUT_DIR / f"{base_filename}.midi"
+        # Add validation info to result
+        result["validation_info"] = {
+            "is_valid": validation_result.is_valid,
+            "note_count": validation_result.note_count,
+            "duration_beats": validation_result.duration_beats,
+            "detected_key": validation_result.detected_key,
+            "detected_mode": validation_result.detected_mode,
+            "warnings": validation_result.warnings,
+        }
 
-            if potential_pdf.exists():
-                pdf_path = f"{base_filename}.pdf"
-            if potential_midi.exists():
-                midi_path = f"{base_filename}.midi"
-
-            if result.returncode != 0:
-                lilypond_error = result.stderr
-
-        except subprocess.TimeoutExpired:
-            lilypond_error = "LilyPond timed out after 60 seconds"
-        except FileNotFoundError:
-            lilypond_error = "LilyPond not found. Please install LilyPond."
-
-        return render_template(
-            "result.html",
-            success=True,
-            lilypond_code=lilypond_code,
-            pdf_path=pdf_path,
-            midi_path=midi_path,
-            ly_filename=f"{base_filename}.ly",
-            lilypond_error=lilypond_error,
-            key_name=display_key,
-            mode=display_mode,
-            meter=f"{meter_num}/{meter_den}",
-            num_measures=num_measures,
-        )
+        return render_template("result.html", **result)
 
     except Exception as e:
         import traceback
@@ -668,7 +657,12 @@ IMPORTANTE:
 
 @app.route("/generate-from-prompt", methods=["POST"])
 def generate_from_prompt():
-    """Generate a melody from a natural language prompt using Gemini."""
+    """
+    Generate a melody from a natural language prompt using Gemini.
+
+    Uses the centralized generate_from_input function after interpreting
+    the prompt with AI and converting to GenerationInput.
+    """
     try:
         user_prompt = request.form.get("user_prompt", "").strip()
         title = request.form.get("prompt_title", "Melodía Generada")
@@ -678,180 +672,29 @@ def generate_from_prompt():
             raise ValueError("No se proporcionó ninguna descripción")
 
         # Interpret the prompt with Gemini
-        params = interpret_prompt_with_gemini(user_prompt)
+        llm_params = interpret_prompt_with_gemini(user_prompt)
+        print(f"[Prompt Mode] Gemini interpreted params: {llm_params}")
 
-        print(f"Interpreted params: {params}")
-
-        # Extract parameters
-        key_name = params.get("key", "C")
-        mode_num = params.get("mode", "1")
-        meter_num = int(params.get("meter_num", 4))
-        meter_den = int(params.get("meter_den", 4))
-        num_measures = int(params.get("num_measures", 8))
-        complexity = int(params.get("complexity", 2))
-        impulse = params.get("impulse", "tetic")
-        use_rests = params.get("use_rests", True)
-        add_bass = params.get("add_bass", False)
-        bass_style = params.get("bass_style", "simple")
-        use_markov = params.get("use_markov", False)
-        composer = params.get("composer", "bach")
-        ornamentation_style = params.get("ornamentation_style", "none")
-        use_dynamics = params.get("use_dynamics", True)
-        use_articulations = params.get("use_articulations", True)
-        generation_method = params.get("generation_method", "traditional")
-        climax_position = float(params.get("climax_position", 0.65))
-        variation_freedom = int(params.get("variation_freedom", 2))
-
-        # Map mode number to name
-        mode = MODE_MAP.get(mode_num, "major")
-
-        # Map impulse type
-        impulse_map = {
-            "tetic": ImpulseType.TETIC,
-            "anacroustic": ImpulseType.ANACROUSTIC,
-            "acephalous": ImpulseType.ACEPHALOUS,
-        }
-        impulse_type = impulse_map.get(impulse, ImpulseType.TETIC)
-
-        # Map ornamentation style
-        ornament_map = {
-            "none": OrnamentStyle.NONE,
-            "minimal": OrnamentStyle.MINIMAL,
-            "classical": OrnamentStyle.CLASSICAL,
-            "baroque": OrnamentStyle.BAROQUE,
-            "romantic": OrnamentStyle.ROMANTIC,
-        }
-        ornament_style = ornament_map.get(ornamentation_style, OrnamentStyle.NONE)
-
-        # Build configuration
-        config = GenerationConfig(
-            tonal=TonalConfig(key_name=key_name, mode=mode),
-            meter=MeterConfig(
-                meter_tuple=(meter_num, meter_den),
-                num_measures=num_measures,
-                impulse_type=impulse_type,
-            ),
-            rhythm=RhythmConfig(
-                complexity=complexity,
-                use_rests=use_rests,
-                rest_probability=0.15 if use_rests else 0.0,
-            ),
-            melody=MelodyConfig(
-                impulse_type=impulse_type,
-                climax_position=climax_position,
-                climax_intensity=1.3,
-                max_interval=6,
-                infraction_rate=0.05,
-                use_tenoris=False,
-            ),
-            motif=MotifConfig(
-                use_motivic_variations=True,
-                variation_probability=0.5,
-                variation_freedom=variation_freedom,
-            ),
-            markov=MarkovConfig(
-                enabled=use_markov,
-                composer=composer,
-                weight=0.4,
-                order=2,
-            ),
-            expression=ExpressionConfig(
-                ornamentation_style=ornament_style,
-                use_dynamics=use_dynamics,
-                use_articulations=use_articulations,
-            ),
-        )
-
-        # Create architect and generate
-        architect = MelodicArchitect(config=config)
-
-        # Generate based on method
-        if generation_method == "genetic":
-            from melody_generator.genetic import GeneticMelodyEvolver, GeneticConfig
-            genetic_config = GeneticConfig(
-                population_size=30,
-                generations=15,
-            )
-            evolver = GeneticMelodyEvolver(architect, genetic_config)
-            staff = evolver.evolve()
-        elif generation_method == "hierarchical":
-            staff = architect.generate_period_hierarchical()
-        else:
-            staff = architect.generate_period()
-
-        # Generate bass if requested
-        bass_staff = None
-        if add_bass:
-            bass_style_map = {
-                "simple": BassStyle.SIMPLE,
-                "alberti": BassStyle.ALBERTI,
-                "walking": BassStyle.WALKING,
-                "contrapunto": BassStyle.CONTRAPUNTO,
-            }
-            bass_config = BassConfig(
-                style=bass_style_map.get(bass_style, BassStyle.SIMPLE),
-                octave=3,
-            )
-            bass_staff = architect.generate_bass(staff, bass_config)
-
-        # Format output
-        if bass_staff:
-            lilypond_code = architect.format_as_lilypond_polyphonic(
-                melody_staff=staff,
-                bass_staff=bass_staff,
-                title=title,
-                composer=score_composer,
-            )
-        else:
-            lilypond_code = architect.format_as_lilypond(
-                staff,
-                title=title,
-                composer=score_composer,
-            )
-
-        # Save files
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_filename = f"prompt_{key_name}_{mode}_{timestamp}"
-        ly_filepath = OUTPUT_DIR / f"{base_filename}.ly"
-
-        with open(ly_filepath, "w", encoding="utf-8") as f:
-            f.write(lilypond_code)
-
-        # Run LilyPond
-        pdf_path = None
-        midi_path = None
-        lilypond_error = None
-
-        try:
-            result = subprocess.run(
-                ["lilypond", "-o", str(OUTPUT_DIR / base_filename), str(ly_filepath)],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            if result.returncode == 0:
-                pdf_path = f"{base_filename}.pdf"
-                midi_path = f"{base_filename}.midi"
-            else:
-                lilypond_error = result.stderr
-        except Exception as e:
-            lilypond_error = str(e)
-
-        return render_template(
-            "result.html",
-            success=True,
-            lilypond_code=lilypond_code,
-            pdf_path=pdf_path,
-            midi_path=midi_path,
-            lilypond_error=lilypond_error,
-            key_name=key_name,
-            mode=mode,
-            meter=f"{meter_num}/{meter_den}",
-            num_measures=num_measures,
-            ai_interpreted=True,
-            interpreted_params=params,
+        # Convert LLM response to GenerationInput (canonical JSON format)
+        gen_input = prompt_response_to_generation_input(
+            llm_response=llm_params,
             original_prompt=user_prompt,
+            title=title,
+            composer=score_composer,
         )
+
+        # Log the JSON input for debugging
+        print(f"[Prompt Mode] GenerationInput JSON:\n{gen_input.to_json()}")
+
+        # Generate using the centralized function
+        result = generate_from_input(gen_input)
+
+        # Add AI-specific info to the result
+        result["ai_interpreted"] = True
+        result["interpreted_params"] = gen_input.to_dict()
+        result["original_prompt"] = user_prompt
+
+        return render_template("result.html", **result)
 
     except Exception as e:
         import traceback

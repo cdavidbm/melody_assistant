@@ -1406,3 +1406,180 @@ footer {
     color: hsl(280, 60%, 75%);
     margin-right: 0.25rem;
 }
+
+/* ===== Develop Mode Styles ===== */
+
+/* Develop info box - green-gold theme */
+.develop-info {
+    background: hsla(42, 80%, 55%, 0.08);
+    border-color: hsla(42, 80%, 55%, 0.2);
+}
+
+/* Required parameters section */
+.required-params-section {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px dashed var(--border);
+}
+
+/* Section header inline (no card) */
+.section-header-inline {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.875rem;
+}
+
+.section-header-inline .section-title {
+    font-family: 'Crimson Pro', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--foreground);
+}
+
+.section-header-inline .section-header-left {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+/* Required badge */
+.required-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    background: hsla(0, 70%, 50%, 0.15);
+    border: 1px solid hsla(0, 70%, 50%, 0.3);
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: hsl(0, 70%, 65%);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+/* Required label marker */
+.required-label::after {
+    content: " *";
+    color: hsl(0, 70%, 60%);
+}
+
+/* Optional badge */
+.optional-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.625rem;
+    background: hsla(210, 50%, 50%, 0.15);
+    border: 1px solid hsla(210, 50%, 50%, 0.3);
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: hsl(210, 50%, 65%);
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+/* LilyPond documentation link */
+.lilypond-docs-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--primary);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all var(--transition);
+}
+
+.lilypond-docs-link:hover {
+    color: var(--primary-glow);
+    text-decoration: underline;
+}
+
+.lilypond-docs-link svg {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Help note minimal (smaller, less prominent) */
+.help-note-minimal {
+    font-size: 0.75rem;
+    color: var(--muted-foreground);
+    margin-top: 0.5rem;
+}
+
+.help-note-minimal code {
+    padding: 0.125rem 0.375rem;
+    background: var(--background);
+    border-radius: 3px;
+    font-family: 'Fira Code', 'Consolas', monospace;
+    font-size: 0.7rem;
+    color: var(--primary);
+}
+
+/* Optional parameters section */
+.optional-params-section {
+    margin-top: 1.25rem;
+    padding-top: 1rem;
+    border-top: 1px dashed var(--border);
+}
+
+/* Collapsible inline header (for optional section) */
+.collapsible-inline {
+    cursor: pointer;
+    user-select: none;
+    transition: all var(--transition);
+}
+
+.collapsible-inline:hover {
+    opacity: 0.8;
+}
+
+.collapsible-inline .section-chevron {
+    width: 1.125rem;
+    height: 1.125rem;
+    color: var(--muted-foreground);
+    transition: transform 0.25s ease;
+}
+
+.collapsible-inline.collapsed .section-chevron {
+    transform: rotate(-90deg);
+}
+
+/* Optional note (explanation text) */
+.optional-note {
+    font-size: 0.8125rem;
+    color: var(--muted-foreground);
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+/* Optional content (collapsible area) */
+.optional-content {
+    animation: slideDown 0.25s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Develop button - same as generate but with develop icon styling */
+.btn-develop {
+    background: linear-gradient(135deg, hsl(42, 80%, 55%), hsl(35, 90%, 50%));
+}
+
+.btn-develop:hover {
+    background: linear-gradient(135deg, hsl(42, 80%, 60%), hsl(35, 90%, 55%));
+    box-shadow: 0 0 25px hsla(42, 80%, 55%, 0.4);
+}
+
+.btn-develop:active {
+    background: linear-gradient(135deg, hsl(42, 80%, 50%), hsl(35, 90%, 45%));
+}
