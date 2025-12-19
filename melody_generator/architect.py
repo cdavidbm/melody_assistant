@@ -27,15 +27,10 @@ from .protocols import (
     LilyPondFormatterProtocol,
 )
 
-# Nuevos módulos de expresión musical
-from .ornamentation import OrnamentGenerator, OrnamentConfig, OrnamentStyle, apply_ornaments_to_staff
-from .dynamics import DynamicGenerator, DynamicLevel, apply_dynamics_to_staff
-from .articulation import ArticulationGenerator, apply_articulations_to_staff
-from .cadences import CadenceGenerator, CadenceType
+# Sistema de expresión modularizado
+from .expression_applicator import ExpressionApplicator
+from .cadences import CadenceType
 from .forms import FormGenerator, FormType, FormPlan
-from .modulation import ModulationGenerator
-from .development import MotivicDeveloper
-from .sequences import SequenceGenerator
 
 # Módulo de bajo armónico
 from .bass import BassGenerator, BassConfig, BassStyle, VoiceLeadingError
@@ -243,8 +238,24 @@ class MelodicArchitect:
             )
         self.expression_config = expression_config
 
-        # Inicializar generadores de expresión
-        self._init_expression_generators()
+        # Inicializar aplicador de expresiones (modularizado)
+        self.expression_applicator = ExpressionApplicator(
+            config=expression_config,
+            key_name=config.tonal.key_name,
+            mode=config.tonal.mode,
+            num_measures=config.meter.num_measures,
+            scale_pitches=self.scale_manager.get_scale_pitches(),
+        )
+
+        # Exponer generadores para compatibilidad con API existente
+        self.ornament_generator = self.expression_applicator.ornament_generator
+        self.dynamic_generator = self.expression_applicator.dynamic_generator
+        self.articulation_generator = self.expression_applicator.articulation_generator
+        self.cadence_generator = self.expression_applicator.cadence_generator
+        self.form_generator = self.expression_applicator.form_generator
+        self.modulation_generator = self.expression_applicator.modulation_generator
+        self.motivic_developer = self.expression_applicator.motivic_developer
+        self.sequence_generator = self.expression_applicator.sequence_generator
 
     @classmethod
     def from_config(cls, config: GenerationConfig) -> "MelodicArchitect":
@@ -610,84 +621,11 @@ class MelodicArchitect:
             staff, title=title, composer=composer
         )
 
-    def _init_expression_generators(self):
-        """Inicializa los generadores de expresión musical."""
-        exp = self.expression_config
-
-        # Generador de ornamentos
-        if exp.use_ornamentation:
-            style_map = {
-                "baroque": OrnamentStyle.BAROQUE,
-                "classical": OrnamentStyle.CLASSICAL,
-                "romantic": OrnamentStyle.ROMANTIC,
-                "minimal": OrnamentStyle.MINIMAL,
-            }
-            ornament_config = OrnamentConfig(
-                style=style_map.get(exp.ornamentation_style, OrnamentStyle.CLASSICAL)
-            )
-            self.ornament_generator = OrnamentGenerator(
-                config=ornament_config,
-                scale_pitches=self.scale_manager.get_scale_pitches(),
-            )
-        else:
-            self.ornament_generator = None
-
-        # Generador de dinámicas
-        if exp.use_dynamics:
-            level_map = {
-                "pp": DynamicLevel.PP,
-                "p": DynamicLevel.P,
-                "mp": DynamicLevel.MP,
-                "mf": DynamicLevel.MF,
-                "f": DynamicLevel.F,
-                "ff": DynamicLevel.FF,
-            }
-            self.dynamic_generator = DynamicGenerator(
-                base_level=level_map.get(exp.base_dynamic, DynamicLevel.MF),
-                climax_level=level_map.get(exp.climax_dynamic, DynamicLevel.F),
-                style=exp.articulation_style,
-            )
-        else:
-            self.dynamic_generator = None
-
-        # Generador de articulaciones
-        if exp.use_articulations:
-            self.articulation_generator = ArticulationGenerator(
-                style=exp.articulation_style,
-            )
-        else:
-            self.articulation_generator = None
-
-        # Generador de cadencias
-        self.cadence_generator = CadenceGenerator(
-            mode=self.mode,
-            style=exp.articulation_style,
-        )
-
-        # Generador de formas
-        self.form_generator = FormGenerator(
-            base_key=self.key_name,
-            base_mode=self.mode,
-            measures_per_section=self.num_measures,
-        )
-
-        # Generador de modulaciones
-        self.modulation_generator = ModulationGenerator(
-            source_key=self.key_name,
-            source_mode=self.mode,
-        )
-
-        # Desarrollador motívico
-        self.motivic_developer = MotivicDeveloper(
-            intensity_level=exp.development_intensity,
-        )
-
-        # Generador de secuencias
-        self.sequence_generator = SequenceGenerator()
-
     def apply_expression(self, staff: abjad.Staff) -> abjad.Staff:
         """
         Aplica características expresivas a un staff generado.
+
+        Delega al ExpressionApplicator modularizado.
 
         Args:
             staff: Staff de Abjad con la melodía
@@ -695,70 +633,7 @@ class MelodicArchitect:
         Returns:
             Staff con dinámicas, articulaciones y ornamentos aplicados
         """
-        exp = self.expression_config
-
-        # Aplicar ornamentos (primero, antes de otras expresiones)
-        if exp.use_ornamentation and self.ornament_generator:
-            apply_ornaments_to_staff(
-                staff,
-                self.ornament_generator,
-                num_measures=self.num_measures,
-            )
-
-        # Aplicar dinámicas
-        if exp.use_dynamics and self.dynamic_generator:
-            dynamic_plan = self.dynamic_generator.generate_period_dynamics(
-                num_measures=self.num_measures,
-                notes_per_measure=4,  # Aproximado
-            )
-            apply_dynamics_to_staff(staff, dynamic_plan)
-
-        # Aplicar articulaciones
-        if exp.use_articulations and self.articulation_generator:
-            # Extraer información de notas
-            leaves = list(abjad.select.leaves(staff))
-            notes = [l for l in leaves if isinstance(l, abjad.Note)]
-
-            if notes:
-                pitches = [str(n.written_pitch()) for n in notes]
-                durations = []
-                for n in notes:
-                    dur = n.written_duration()  # Method call with parentheses
-                    durations.append((dur.numerator, dur.denominator))
-
-                # Determinar tiempos fuertes (simplificado)
-                strong_beats = [i % 4 == 0 for i in range(len(notes))]
-
-                # Determinar cadencias (últimas notas de cada 4 compases)
-                is_cadence = [False] * len(notes)
-                notes_per_measure = max(1, len(notes) // self.num_measures)
-                for i in range(len(notes)):
-                    measure_idx = i // notes_per_measure
-                    if (measure_idx + 1) % 4 == 0:
-                        is_cadence[i] = True
-
-                # Generar articulaciones
-                articulations = self.articulation_generator.generate_articulations(
-                    pitches=pitches,
-                    durations=durations,
-                    strong_beats=strong_beats,
-                    is_cadence=is_cadence,
-                )
-
-                # Generar slurs
-                phrase_boundaries = [
-                    i * notes_per_measure * 4
-                    for i in range(1, self.num_measures // 4 + 1)
-                ]
-                slurs = self.articulation_generator.generate_slurs(
-                    pitches=pitches,
-                    phrase_boundaries=phrase_boundaries,
-                )
-
-                # Aplicar al staff
-                apply_articulations_to_staff(staff, articulations, slurs)
-
-        return staff
+        return self.expression_applicator.apply(staff)
 
     def generate_period_with_expression(self) -> abjad.Staff:
         """
@@ -982,6 +857,8 @@ class MelodicArchitect:
         """
         Obtiene el gesto melódico para una cadencia específica.
 
+        Delega al ExpressionApplicator.
+
         Args:
             cadence_type: "authentic", "half", "deceptive", "plagal"
             is_final: Si es cadencia final
@@ -989,29 +866,7 @@ class MelodicArchitect:
         Returns:
             Dict con grados melódicos y duraciones
         """
-        type_map = {
-            "authentic": CadenceType.AUTHENTIC_PERFECT,
-            "half": CadenceType.HALF,
-            "deceptive": CadenceType.DECEPTIVE,
-            "plagal": CadenceType.PLAGAL,
-        }
-        cad_type = type_map.get(cadence_type, CadenceType.AUTHENTIC_PERFECT)
-
-        if cad_type == CadenceType.AUTHENTIC_PERFECT:
-            gesture = self.cadence_generator.get_authentic_cadence(perfect=True)
-        elif cad_type == CadenceType.HALF:
-            gesture = self.cadence_generator.get_half_cadence()
-        elif cad_type == CadenceType.DECEPTIVE:
-            gesture = self.cadence_generator.get_deceptive_cadence()
-        else:
-            gesture = self.cadence_generator.get_plagal_cadence()
-
-        return {
-            "melody_degrees": gesture.melody_degrees,
-            "durations": gesture.durations,
-            "bass_degrees": gesture.bass_degrees,
-            "has_trill": gesture.ornament_type == "trill",
-        }
+        return self.expression_applicator.get_cadence_gesture(cadence_type, is_final)
 
     def get_modulation_plan(
         self,
@@ -1020,35 +875,12 @@ class MelodicArchitect:
         """
         Obtiene un plan de modulación a una tonalidad relacionada.
 
+        Delega al ExpressionApplicator.
+
         Args:
             target_relationship: "dominant", "relative", "subdominant", "parallel"
 
         Returns:
             Dict con información de la modulación
         """
-        from .modulation import KeyRelationship
-
-        rel_map = {
-            "dominant": KeyRelationship.DOMINANT,
-            "relative": KeyRelationship.RELATIVE,
-            "subdominant": KeyRelationship.SUBDOMINANT,
-            "parallel": KeyRelationship.PARALLEL,
-        }
-
-        related_keys = self.modulation_generator.get_related_keys()
-        relationship = rel_map.get(target_relationship, KeyRelationship.DOMINANT)
-
-        if relationship in related_keys:
-            target_key, target_mode = related_keys[relationship]
-            plan = self.modulation_generator.create_pivot_modulation(
-                target_key, target_mode
-            )
-            return {
-                "source": f"{plan.source_key} {plan.source_mode}",
-                "target": f"{plan.target_key} {plan.target_mode}",
-                "type": plan.modulation_type.value,
-                "pivot_chord": plan.pivot_chord.chord_name if plan.pivot_chord else None,
-                "melodic_approach": plan.melodic_degrees_source,
-            }
-
-        return {"error": "Relationship not found"}
+        return self.expression_applicator.get_modulation_plan(target_relationship)

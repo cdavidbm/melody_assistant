@@ -176,6 +176,9 @@ from .sequences import (
     MelodicSequence,
 )
 
+# Sistema de expresión modularizado
+from .expression_applicator import ExpressionApplicator
+
 # Algoritmos genéticos
 from .genetic import (
     GeneticMelodyEvolver,
@@ -211,7 +214,7 @@ from .constants import (
     get_rhythm_probability,
 )
 
-__version__ = "3.2.0"
+__version__ = "3.5.0"
 __all__ = [
     # Clase principal
     "MelodicArchitect",
@@ -306,6 +309,8 @@ __all__ = [
     "SequenceGenerator",
     "SequenceType",
     "MelodicSequence",
+    # Sistema de expresión modularizado
+    "ExpressionApplicator",
     # Algoritmos genéticos
     "GeneticMelodyEvolver",
     "GeneticConfig",

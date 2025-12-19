@@ -308,33 +308,27 @@ class BassGenerator:
         Returns:
             abjad.Note
         """
-        # Convertir pitch de music21 a formato LilyPond/Abjad
+        # Convertir pitch de music21 a formato Abjad (notación inglesa)
         # Formato music21: "c3", "g#3", "eb2"
-        # Formato LilyPond: "c", "gis'", "es,"
+        # Formato Abjad: "c", "gs'", "ef," (inglés: s=sharp, f=flat)
 
         from music21 import pitch as m21pitch
 
         p = m21pitch.Pitch(pitch_str)
         base_name = p.step.lower()
 
-        # Alteraciones
+        # Alteraciones (usar notación Inglesa para Abjad: s=sharp, f=flat)
         alteration = p.alter
         if alteration == 0:
             accidental = ""
         elif alteration == 1:
-            accidental = "is"  # Sharp
+            accidental = "s"  # Sharp (fs, cs, gs)
         elif alteration == -1:
-            if base_name in ["a", "e"]:
-                accidental = "s"  # as, es
-            else:
-                accidental = "es"  # bes, des, ges
+            accidental = "f"  # Flat (bf, ef, af)
         elif alteration == 2:
-            accidental = "isis"
+            accidental = "ss"  # Double sharp
         elif alteration == -2:
-            if base_name in ["a", "e"]:
-                accidental = "ses"
-            else:
-                accidental = "eses"
+            accidental = "ff"  # Double flat
         else:
             accidental = ""
 

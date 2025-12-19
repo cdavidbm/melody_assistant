@@ -26,25 +26,30 @@ No tests or linting configured.
 
 ```
 melody_generator/
-├── __init__.py       # Exports: MelodicArchitect, GenerationConfig, etc.
-├── __main__.py       # Entry point for python -m melody_generator
-├── config.py         # NEW: Dataclasses de configuración (SOLID: SRP)
-├── protocols.py      # NEW: Interfaces/Protocolos ABC (SOLID: DIP, ISP)
-├── loaders.py        # NEW: Factories para Markov (SOLID: SRP)
-├── converters.py     # NEW: Conversores Abjad↔music21 (SOLID: SRP)
-├── models.py         # Enums and dataclasses
-├── scales.py         # Scale/mode management (ScaleManager)
-├── harmony.py        # Harmonic progressions (HarmonyManager)
-├── rhythm.py         # Rhythmic patterns (RhythmGenerator)
-├── pitch.py          # Pitch selection (PitchSelector)
-├── motif.py          # Motif creation/variation (MotifGenerator)
-├── markov.py         # Markov chains (BaseMarkovModel, MelodicMarkovModel, EnhancedMelodicMarkovModel, RhythmicMarkovModel)
-├── scoring.py        # Multi-criteria scoring (MelodicScorer, NoteCandidate, PhraseContour)
-├── lilypond.py       # LilyPond output (LilyPondFormatter)
-├── generation.py     # Period generation (PeriodGenerator)
-├── architect.py      # Main orchestrator with DI (MelodicArchitect)
-├── validation.py     # Music validation (MusicValidator, AutoCorrector)
-└── cli.py            # CLI interface (refactored into functions)
+├── __init__.py              # Exports: MelodicArchitect, GenerationConfig, etc.
+├── __main__.py              # Entry point for python -m melody_generator
+├── config.py                # Dataclasses de configuración (SOLID: SRP)
+├── protocols.py             # Interfaces/Protocolos ABC (SOLID: DIP, ISP)
+├── loaders.py               # Factories para Markov (SOLID: SRP)
+├── converters.py            # Conversores Abjad↔music21 (SOLID: SRP)
+├── models.py                # Enums and dataclasses
+├── scales.py                # Scale/mode management (ScaleManager)
+├── harmony.py               # Harmonic progressions (HarmonyManager)
+├── rhythm.py                # Rhythmic patterns (RhythmGenerator)
+├── pitch.py                 # Pitch selection (PitchSelector)
+├── motif.py                 # Motif creation/variation (MotifGenerator)
+├── markov.py                # Markov chains (Melodic, Rhythmic, Enhanced)
+├── scoring.py               # Multi-criteria scoring (MelodicScorer)
+├── lilypond.py              # LilyPond output (LilyPondFormatter)
+├── generation.py            # Period generation (PeriodGenerator)
+├── architect.py             # Main orchestrator with DI (MelodicArchitect)
+├── expression_applicator.py # Expression system (ornaments, dynamics, articulations)
+├── bass.py                  # Harmonic bass generation (BassGenerator)
+├── genetic.py               # Genetic algorithms (GeneticMelodyEvolver)
+├── validation.py            # Music validation (MusicValidator, AutoCorrector)
+├── correction.py            # Surgical correction (SurgicalCorrector)
+├── memory.py                # Decision memory for correction
+└── cli.py                   # CLI interface (refactored into functions)
 
 models/               # Pre-trained Markov models
 ├── melody_markov/    # Melodic interval models
@@ -90,20 +95,25 @@ main.py               # Wrapper for backwards compatibility
 | `markov.py` | `BaseMarkovModel`, `MelodicMarkovModel`, `EnhancedMelodicMarkovModel`, `RhythmicMarkovModel` | Markov chain learning from music21 corpus |
 | `scoring.py` | `MelodicScorer`, `NoteCandidate`, `PhraseContour` | Multi-criteria note selection with voice leading |
 | `architect.py` | `MelodicArchitect` | Main entry point with DI support, orchestrates all modules |
+| `expression_applicator.py` | `ExpressionApplicator` | Ornaments, dynamics, articulations, cadences, forms, modulation |
+| `bass.py` | `BassGenerator`, `BassConfig`, `BassStyle` | Harmonic bass line generation (Simple, Alberti, Walking) |
+| `genetic.py` | `GeneticMelodyEvolver`, `GeneticConfig` | Evolutionary motif optimization with DEAP |
+| `validation.py` | `MusicValidator`, `AutoCorrector` | Music theory validation and auto-correction |
+| `correction.py` | `SurgicalCorrector` | Targeted note corrections based on memory |
 | `cli.py` | - | Interactive CLI with refactored functions |
 | `config.py` | `GenerationConfig`, `TonalConfig`, etc. | Dataclasses de configuración centralizada |
 | `protocols.py` | Protocol classes | Interfaces para inyección de dependencias |
 | `loaders.py` | `MarkovModelLoader` | Factory para carga de modelos Markov |
 | `converters.py` | `AbjadMusic21Converter` | Conversiones entre Abjad y music21 |
 
-## SOLID Architecture (v3.0)
+## SOLID Architecture (v3.5)
 
 ### Principios Aplicados
 
 | Principio | Implementación |
 |-----------|----------------|
-| **SRP** | `config.py` para configuración, `loaders.py` para carga, `converters.py` para conversión |
-| **OCP** | Nuevos modos/variaciones se agregan sin modificar clases existentes |
+| **SRP** | `config.py` para configuración, `expression_applicator.py` para expresión, `bass.py` para bajo |
+| **OCP** | Nuevos modos/variaciones/estilos se agregan sin modificar clases existentes |
 | **LSP** | `BaseMarkovModel` → `MelodicMarkovModel`, `RhythmicMarkovModel` |
 | **ISP** | Protocolos específicos: `PitchSelectorProtocol`, `RhythmGeneratorProtocol`, etc. |
 | **DIP** | `MelodicArchitect` acepta dependencias inyectadas vía protocolos |
