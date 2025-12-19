@@ -79,6 +79,7 @@ class PeriodGenerator:
 
         Implementa la estructura de pregunta-respuesta con cadencias apropiadas.
         Genera un motivo rítmico base que se reutiliza para cohesión.
+        Planifica el contorno melódico de cada frase antes de generarla.
 
         Soporta tres tipos de inicio:
         - TETIC: Comienza en tiempo fuerte (compás completo)
@@ -100,7 +101,35 @@ class PeriodGenerator:
 
         midpoint = self.num_measures // 2
 
+        # Estimar notas por frase para planificación de contorno
+        # (basado en métrica y complejidad rítmica típica)
+        notes_per_measure = self.meter_tuple[0] * 2  # Aproximación
+        antecedent_notes = midpoint * notes_per_measure
+        consequent_notes = (self.num_measures - midpoint) * notes_per_measure
+
+        # Planificar contorno del antecedente
+        self.pitch_selector.plan_phrase_contour(
+            phrase_length=antecedent_notes,
+            is_antecedent=True,
+            start_degree=1,
+        )
+
         for m_idx in range(self.num_measures):
+            # Al llegar al consecuente, planificar nuevo contorno
+            if m_idx == midpoint:
+                # Obtener el último grado para continuidad
+                last_degree = 5  # Típicamente terminamos antecedente en dominante
+                if self.pitch_selector.last_pitch:
+                    last_degree = self.scale_manager.pitch_to_degree(
+                        self.pitch_selector.last_pitch
+                    ) or 5
+
+                self.pitch_selector.plan_phrase_contour(
+                    phrase_length=consequent_notes,
+                    is_antecedent=False,
+                    start_degree=last_degree,
+                )
+
             is_antecedent_end = m_idx == midpoint - 1
             is_period_end = m_idx == self.num_measures - 1
 
@@ -350,6 +379,8 @@ class PeriodGenerator:
         """
         Renderiza un Period a un Abjad Staff.
 
+        Planifica el contorno melódico de cada semifrase antes de renderizarla.
+
         Args:
             period: Estructura Period a renderizar
 
@@ -360,9 +391,35 @@ class PeriodGenerator:
 
         # Obtener todos los motivos en orden
         all_motifs = period.get_all_motifs()
+        midpoint = self.num_measures // 2
+
+        # Estimar notas por semifrase
+        notes_per_measure = self.meter_tuple[0] * 2
+        antecedent_notes = midpoint * notes_per_measure
+        consequent_notes = (self.num_measures - midpoint) * notes_per_measure
+
+        # Planificar contorno del antecedente
+        self.pitch_selector.plan_phrase_contour(
+            phrase_length=antecedent_notes,
+            is_antecedent=True,
+            start_degree=1,
+        )
 
         # Renderizar cada motivo como un compás
         for measure_idx, motif in enumerate(all_motifs):
+            # Al llegar al consecuente, planificar nuevo contorno
+            if measure_idx == midpoint:
+                last_degree = 5
+                if self.pitch_selector.last_pitch:
+                    last_degree = self.scale_manager.pitch_to_degree(
+                        self.pitch_selector.last_pitch
+                    ) or 5
+
+                self.pitch_selector.plan_phrase_contour(
+                    phrase_length=consequent_notes,
+                    is_antecedent=False,
+                    start_degree=last_degree,
+                )
             if measure_idx >= self.num_measures:
                 break
 

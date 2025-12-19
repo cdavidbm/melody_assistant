@@ -15,10 +15,16 @@ from pathlib import Path
 # Agregar directorio raíz al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from melody_generator.markov import MelodicMarkovModel, RhythmicMarkovModel
+from melody_generator.markov import (
+    MelodicMarkovModel,
+    EnhancedMelodicMarkovModel,
+    RhythmicMarkovModel,
+)
 
 
-def train_melody_model(composer: str, order: int, max_works: int | None = None):
+def train_melody_model(
+    composer: str, order: int, max_works: int | None = None, enhanced: bool = False
+):
     """
     Entrena modelo melódico.
 
@@ -26,21 +32,29 @@ def train_melody_model(composer: str, order: int, max_works: int | None = None):
         composer: "bach", "mozart", "beethoven", "all"
         order: Orden de la cadena de Markov (1-3)
         max_works: Máximo de obras a procesar (None = todas)
+        enhanced: Si usar el modelo mejorado (grado+métrica+dirección)
     """
+    model_type = "ENHANCED" if enhanced else "CLASSIC"
     print(f"\n{'=' * 70}")
-    print(f"ENTRENANDO MODELO MELÓDICO: {composer.upper()}")
+    print(f"ENTRENANDO MODELO MELÓDICO {model_type}: {composer.upper()}")
     print(f"{'=' * 70}")
     print(f"Orden: {order}")
     print(f"Máximo de obras: {max_works or 'todas'}")
+    if enhanced:
+        print("Modo: Estado enriquecido (grado + métrica + dirección)")
+        print("       Solo extrae voz soprano")
     print()
 
-    model = MelodicMarkovModel(order=order, composer=composer)
+    if enhanced:
+        model = EnhancedMelodicMarkovModel(order=order, composer=composer)
+    else:
+        model = MelodicMarkovModel(order=order, composer=composer)
 
     try:
         model.train_from_corpus(
             composer=composer,
             max_works=max_works,
-            voice_part=0,  # Voz superior
+            voice_part=0,  # Voz superior (soprano)
         )
     except Exception as e:
         print(f"\n❌ Error durante el entrenamiento: {e}")
@@ -49,10 +63,14 @@ def train_melody_model(composer: str, order: int, max_works: int | None = None):
     print(f"\nTotal de transiciones aprendidas: {model.chain.total_transitions}")
 
     # Guardar modelo
-    output_dir = Path("models/melody_markov")
+    if enhanced:
+        output_dir = Path("models/enhanced_markov")
+    else:
+        output_dir = Path("models/melody_markov")
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    output_path = output_dir / f"{composer}_intervals.json"
+    suffix = "enhanced" if enhanced else "intervals"
+    output_path = output_dir / f"{composer}_{suffix}.json"
 
     try:
         model.chain.save(str(output_path))
@@ -233,6 +251,11 @@ Ejemplos de uso:
         action="store_true",
         help="No crear modelo combinado cuando se usa --composer all",
     )
+    parser.add_argument(
+        "--enhanced",
+        action="store_true",
+        help="Usar modelo melódico mejorado (grado+métrica+dirección, solo soprano)",
+    )
 
     args = parser.parse_args()
 
@@ -258,7 +281,9 @@ Ejemplos de uso:
 
     for composer in composers:
         if args.type in ["melody", "both"]:
-            if train_melody_model(composer, args.order, args.max_works):
+            if train_melody_model(
+                composer, args.order, args.max_works, enhanced=args.enhanced
+            ):
                 success_melody.append(composer)
 
         if args.type in ["rhythm", "both"]:

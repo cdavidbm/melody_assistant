@@ -62,10 +62,20 @@ from .markov import (
     MarkovChain,
     BaseMarkovModel,
     MelodicMarkovModel,
+    EnhancedMelodicMarkovModel,
     RhythmicMarkovModel,
 )
 
-__version__ = "3.0.0"
+# Sistema de scoring
+from .scoring import (
+    MelodicScorer,
+    NoteCandidate,
+    PhraseContour,
+    PhrasePosition,
+    MetricStrength,
+)
+
+__version__ = "3.1.0"
 __all__ = [
     # Clase principal
     "MelodicArchitect",
@@ -102,7 +112,14 @@ __all__ = [
     "MarkovChain",
     "BaseMarkovModel",
     "MelodicMarkovModel",
+    "EnhancedMelodicMarkovModel",
     "RhythmicMarkovModel",
+    # Scoring
+    "MelodicScorer",
+    "NoteCandidate",
+    "PhraseContour",
+    "PhrasePosition",
+    "MetricStrength",
     # Utilidades
     "MarkovModelLoader",
     "AbjadMusic21Converter",

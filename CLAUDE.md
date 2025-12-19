@@ -38,7 +38,8 @@ melody_generator/
 ├── rhythm.py         # Rhythmic patterns (RhythmGenerator)
 ├── pitch.py          # Pitch selection (PitchSelector)
 ├── motif.py          # Motif creation/variation (MotifGenerator)
-├── markov.py         # Markov chains (BaseMarkovModel, MelodicMarkovModel, RhythmicMarkovModel)
+├── markov.py         # Markov chains (BaseMarkovModel, MelodicMarkovModel, EnhancedMelodicMarkovModel, RhythmicMarkovModel)
+├── scoring.py        # Multi-criteria scoring (MelodicScorer, NoteCandidate, PhraseContour)
 ├── lilypond.py       # LilyPond output (LilyPondFormatter)
 ├── generation.py     # Period generation (PeriodGenerator)
 ├── architect.py      # Main orchestrator with DI (MelodicArchitect)
@@ -86,7 +87,8 @@ main.py               # Wrapper for backwards compatibility
 | `motif.py` | `MotifGenerator` | Base motif creation, 6 variation types |
 | `generation.py` | `PeriodGenerator` | Traditional and hierarchical generation |
 | `lilypond.py` | `LilyPondFormatter` | Abjad-to-LilyPond conversion |
-| `markov.py` | `BaseMarkovModel`, `MelodicMarkovModel`, `RhythmicMarkovModel` | Markov chain learning from music21 corpus |
+| `markov.py` | `BaseMarkovModel`, `MelodicMarkovModel`, `EnhancedMelodicMarkovModel`, `RhythmicMarkovModel` | Markov chain learning from music21 corpus |
+| `scoring.py` | `MelodicScorer`, `NoteCandidate`, `PhraseContour` | Multi-criteria note selection with voice leading |
 | `architect.py` | `MelodicArchitect` | Main entry point with DI support, orchestrates all modules |
 | `cli.py` | - | Interactive CLI with refactored functions |
 | `config.py` | `GenerationConfig`, `TonalConfig`, etc. | Dataclasses de configuración centralizada |
@@ -220,6 +222,67 @@ architect = MelodicArchitect(
 )
 
 staff = architect.generate_period()
+```
+
+### Enhanced Markov Model (v3.1)
+
+The `EnhancedMelodicMarkovModel` provides richer state representation:
+
+- **State**: `(degree, metric, direction)` instead of just interval
+  - `degree`: Scale degree (1-7)
+  - `metric`: "strong" or "weak" beat
+  - `direction`: 1 (ascending), 0 (static), -1 (descending)
+- **Soprano-only extraction**: Trains only on melody line, not all voices
+- **Degree probabilities**: Returns probabilities per scale degree
+
+```python
+from melody_generator import EnhancedMelodicMarkovModel
+
+# Train enhanced model
+model = EnhancedMelodicMarkovModel(order=2, composer="bach")
+model.train_from_corpus(composer="bach", voice_part=0)  # soprano only
+
+# Get probabilities for each degree
+probs = model.get_degree_probabilities(current_metric="strong")
+# Returns: {1: 0.15, 2: 0.08, 3: 0.12, 4: 0.05, 5: 0.25, 6: 0.10, 7: 0.08}
+```
+
+Train with: `python scripts/train_markov.py --composer bach --type melody --enhanced`
+
+## Multi-Criteria Scoring System (v3.1)
+
+The `MelodicScorer` replaces random note selection with intelligent scoring:
+
+### Scoring Criteria
+
+| Criterion | Weight | Description |
+|-----------|--------|-------------|
+| Voice Leading | 28% | Prefer stepwise motion (seconds > thirds > larger) |
+| Harmonic | 22% | Chord tones on strong beats |
+| Contour | 15% | Follow planned phrase shape |
+| Tendency | 12% | Resolve tendency tones (7→1, 4→3) |
+| Markov | 10% | Composer-learned patterns (if enabled) |
+| Variety | 8% | Avoid excessive repetition |
+| Range | 5% | Prefer center of melodic range |
+
+### Phrase Planning
+
+Each phrase has a planned contour:
+- **Antecedent**: Climax at ~60%, ends on dominant (5)
+- **Consequent**: Climax at ~50%, ends on tonic (1)
+
+```python
+from melody_generator.scoring import PhraseContour
+
+contour = PhraseContour(
+    length=16,           # Notes in phrase
+    start_degree=1,      # Start on tonic
+    climax_position=0.6, # Climax at 60%
+    climax_degree=5,     # Reach dominant
+    end_degree=1,        # End on tonic
+)
+contour.plan_targets()
+# contour.target_degrees = [1, 1, 2, 3, 4, 5, 4, 3, 2, 1, ...]
 ```
 
 ### Training New Models

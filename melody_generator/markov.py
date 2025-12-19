@@ -447,6 +447,289 @@ class MelodicMarkovModel(BaseMarkovModel):
 
         return markov_suggestion
 
+    def get_probability(self, interval: int) -> float:
+        """
+        Obtiene la probabilidad de un intervalo específico dado el historial.
+
+        Args:
+            interval: Intervalo en semitonos (-12 a +12)
+
+        Returns:
+            Probabilidad entre 0.0 y 1.0
+        """
+        prev_state = self._get_prev_state()
+        if prev_state is None:
+            # Sin historial suficiente, distribución uniforme
+            return 1.0 / 25  # 25 intervalos posibles (-12 a +12)
+
+        return self.chain.get_probability(prev_state, interval)
+
+    def get_all_probabilities(self) -> Dict[int, float]:
+        """
+        Obtiene probabilidades para todos los intervalos posibles.
+
+        Returns:
+            Diccionario {intervalo: probabilidad}
+        """
+        prev_state = self._get_prev_state()
+        probs = {}
+
+        for interval in range(-12, 13):
+            if prev_state is None:
+                probs[interval] = 1.0 / 25
+            else:
+                probs[interval] = self.chain.get_probability(prev_state, interval)
+
+        return probs
+
+
+class EnhancedMelodicMarkovModel(BaseMarkovModel):
+    """
+    Modelo de Markov mejorado para melodías.
+
+    Usa estado enriquecido que incluye:
+    - Grado de la escala (1-7)
+    - Contexto métrico (fuerte/débil)
+    - Dirección melódica (ascendente/descendente/estacionario)
+
+    Esto permite aprender patrones como:
+    "En tiempo fuerte, después de ascender del grado 5 al 6,
+     la melodía tiende a ir al grado 5 o 7"
+    """
+
+    def __init__(self, order: int = 2, composer: str = "bach"):
+        """
+        Inicializa el modelo mejorado.
+
+        Args:
+            order: Orden de la cadena (2 recomendado)
+            composer: "bach", "mozart", "beethoven", "combined"
+        """
+        super().__init__(order=order, composer=composer)
+
+        # Estado actual: (degree, metric, direction)
+        self._degree_history: List[int] = []
+        self._metric_history: List[str] = []  # "strong" | "weak"
+        self._direction_history: List[int] = []  # 1 | 0 | -1
+
+    def _make_state(
+        self, degree: int, metric: str, direction: int
+    ) -> Tuple[int, str, int]:
+        """Crea una tupla de estado."""
+        return (degree, metric, direction)
+
+    def _extract_melody_features(
+        self, notes, beats_per_measure: int = 4
+    ) -> List[Tuple[int, str, int]]:
+        """
+        Extrae características melódicas de una secuencia de notas.
+
+        Args:
+            notes: Lista de notas de music21
+            beats_per_measure: Pulsos por compás para determinar tiempo fuerte
+
+        Returns:
+            Lista de tuplas (degree, metric, direction)
+        """
+        from music21 import pitch as m21_pitch
+
+        features = []
+        prev_midi = None
+
+        for note in notes:
+            try:
+                if hasattr(note, 'pitch'):
+                    midi = note.pitch.midi
+                    # Convertir MIDI a grado aproximado (asumiendo C mayor)
+                    # Esto es una simplificación; idealmente detectaríamos la tonalidad
+                    degree = ((midi % 12) // 2) + 1
+                    if degree > 7:
+                        degree = 7
+
+                    # Determinar contexto métrico
+                    beat = note.beat if hasattr(note, 'beat') else 1
+                    metric = "strong" if beat in [1, 3] else "weak"
+
+                    # Determinar dirección
+                    if prev_midi is None:
+                        direction = 0
+                    elif midi > prev_midi:
+                        direction = 1
+                    elif midi < prev_midi:
+                        direction = -1
+                    else:
+                        direction = 0
+
+                    features.append((degree, metric, direction))
+                    prev_midi = midi
+            except Exception:
+                continue
+
+        return features
+
+    def train_from_corpus(
+        self,
+        composer: str = "bach",
+        max_works: Optional[int] = None,
+        voice_part: int = 0,
+    ):
+        """
+        Entrena desde corpus de music21 extrayendo solo soprano.
+
+        Args:
+            composer: "bach", "mozart", "beethoven", "all"
+            max_works: Límite de obras (None = todas)
+            voice_part: Índice de voz a extraer (0 = soprano)
+        """
+        from music21 import corpus
+
+        print(f"  Buscando obras de {composer} (Enhanced Markov)...")
+
+        if composer.lower() == "all":
+            results = []
+            for comp in ["bach", "mozart", "beethoven"]:
+                results.extend(corpus.search(comp, field="composer"))
+        else:
+            results = corpus.search(composer, field="composer")
+
+        if max_works:
+            results = results[:max_works]
+
+        print(f"  Encontradas {len(results)} obras")
+        print(f"  Extrayendo características melódicas (grado+métrica+dirección)...")
+
+        all_features = []
+        works_processed = 0
+
+        for idx, work in enumerate(results):
+            try:
+                score = work.parse()
+
+                # Extraer solo la voz soprano/superior
+                if len(score.parts) > voice_part:
+                    melody = score.parts[voice_part]
+                else:
+                    continue  # Skip si no hay suficientes partes
+
+                # Obtener notas
+                notes = list(melody.flatten().notes.stream())
+
+                if len(notes) < 3:
+                    continue
+
+                # Determinar beats por compás
+                ts = melody.getTimeSignatures()[0] if melody.getTimeSignatures() else None
+                beats_per_measure = ts.numerator if ts else 4
+
+                # Extraer características
+                features = self._extract_melody_features(notes, beats_per_measure)
+
+                if len(features) >= self.order + 1:
+                    all_features.extend(features)
+                    works_processed += 1
+
+                if (idx + 1) % 50 == 0:
+                    print(f"    Procesadas {idx + 1}/{len(results)} obras...")
+
+            except Exception:
+                continue
+
+        print(f"  Obras procesadas: {works_processed}")
+        print(f"  Total de estados extraídos: {len(all_features)}")
+
+        # Entrenar cadena
+        print(f"  Entrenando cadena de Markov (orden {self.order})...")
+        self.chain.train(all_features)
+        print(f"  Transiciones únicas: {len(self.chain.transitions)}")
+
+    def suggest_next(
+        self, weight: float = 0.5, fallback: Optional[List[Any]] = None
+    ) -> Tuple[int, str, int]:
+        """Sugiere siguiente estado (degree, metric, direction)."""
+        return self.suggest_degree(weight=weight)
+
+    def suggest_degree(
+        self,
+        current_metric: str = "weak",
+        weight: float = 0.5,
+        fallback_degrees: Optional[List[int]] = None,
+    ) -> int:
+        """
+        Sugiere siguiente grado basado en contexto.
+
+        Args:
+            current_metric: Contexto métrico actual ("strong" | "weak")
+            weight: Peso de Markov (0.0-1.0)
+            fallback_degrees: Grados de respaldo si Markov falla
+
+        Returns:
+            Grado sugerido (1-7)
+        """
+        if fallback_degrees is None:
+            fallback_degrees = [1, 3, 5]
+
+        prev_state = self._get_prev_state()
+        if prev_state is None:
+            return random.choice(fallback_degrees)
+
+        if random.random() > weight:
+            return random.choice(fallback_degrees)
+
+        # Pedir sugerencia a Markov
+        suggestion = self.chain.predict_next(prev_state)
+
+        if suggestion is None:
+            return random.choice(fallback_degrees)
+
+        # Extraer solo el grado de la sugerencia
+        if isinstance(suggestion, tuple) and len(suggestion) >= 1:
+            return suggestion[0]
+        return random.choice(fallback_degrees)
+
+    def update_history(self, degree: int, metric: str = "weak", direction: int = 0):
+        """
+        Actualiza historial con nuevo estado.
+
+        Args:
+            degree: Grado actual (1-7)
+            metric: Contexto métrico ("strong" | "weak")
+            direction: Dirección melódica (1, 0, -1)
+        """
+        state = (degree, metric, direction)
+        self._history.append(state)
+
+        # Mantener historial limitado
+        max_history = self.order + 20
+        if len(self._history) > max_history:
+            self._history = self._history[-max_history:]
+
+    def get_degree_probabilities(
+        self, current_metric: str = "weak"
+    ) -> Dict[int, float]:
+        """
+        Obtiene probabilidades para cada grado dado el contexto.
+
+        Returns:
+            Diccionario {degree: probability}
+        """
+        prev_state = self._get_prev_state()
+        probs = {}
+
+        for degree in range(1, 8):
+            # Crear posibles estados con este grado
+            for direction in [-1, 0, 1]:
+                test_state = (degree, current_metric, direction)
+
+                if prev_state is None:
+                    prob = 1.0 / 21  # 7 grados * 3 direcciones
+                else:
+                    prob = self.chain.get_probability(prev_state, test_state)
+
+                # Acumular probabilidad para este grado
+                probs[degree] = probs.get(degree, 0) + prob
+
+        return probs
+
 
 class RhythmicMarkovModel(BaseMarkovModel):
     """
