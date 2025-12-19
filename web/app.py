@@ -157,7 +157,13 @@ def index():
 def generate():
     """Generate a melody based on form data."""
     try:
-        # Parse form data
+        # Check generation mode
+        generation_mode = request.form.get("generation_mode", "spontaneous")
+
+        if generation_mode == "develop":
+            return generate_develop_mode()
+
+        # Parse form data (spontaneous mode)
         key_name = request.form.get("key", "C")
         mode = MODE_MAP.get(request.form.get("mode", "1"), "major")
         meter_num = int(request.form.get("meter_num", 4))
@@ -365,6 +371,141 @@ def generate():
         )
 
     except Exception as e:
+        return render_template(
+            "result.html",
+            success=False,
+            error=str(e),
+        )
+
+
+def generate_develop_mode():
+    """Generate a melody by developing user-provided motif."""
+    try:
+        # Parse develop mode form data
+        user_motif = request.form.get("user_motif", "").strip()
+        num_measures = int(request.form.get("dev_num_measures", 8))
+        variation_intensity = int(request.form.get("dev_variation_intensity", 2))
+        meter_num = int(request.form.get("dev_meter_num", 4))
+        meter_den = int(request.form.get("dev_meter_den", 4))
+        key_name = request.form.get("dev_key", "auto")
+        add_bass = request.form.get("dev_add_bass") == "on"
+        title = request.form.get("dev_title", "Desarrollo de Idea")
+        score_composer = request.form.get("dev_composer", "CompositorIA")
+
+        if not user_motif:
+            raise ValueError("No se proporcionó ningún motivo para desarrollar")
+
+        # Map variation intensity to freedom level
+        variation_freedom = variation_intensity
+
+        # Create basic config (will be overridden by motif analysis if key="auto")
+        detected_key = key_name if key_name != "auto" else "C"
+        detected_mode = "major"
+
+        config = GenerationConfig(
+            tonal=TonalConfig(key_name=detected_key, mode=detected_mode),
+            meter=MeterConfig(
+                meter_tuple=(meter_num, meter_den),
+                num_measures=num_measures,
+            ),
+            rhythm=RhythmConfig(
+                complexity=2,
+                use_rests=True,
+                rest_probability=0.1,
+            ),
+            melody=MelodyConfig(
+                impulse_type=ImpulseType.TETIC,
+                climax_position=0.65,
+                climax_intensity=1.3,
+                max_interval=6,
+                infraction_rate=0.05,
+                use_tenoris=False,
+            ),
+            motif=MotifConfig(
+                use_motivic_variations=True,
+                variation_probability=0.5 if variation_intensity == 2 else (0.3 if variation_intensity == 1 else 0.7),
+                variation_freedom=variation_freedom,
+            ),
+            markov=MarkovConfig(enabled=False),
+        )
+
+        # Create architect and develop the motif
+        architect = MelodicArchitect(config=config)
+
+        # Use develop_user_motif method
+        staff, lilypond_code = architect.develop_user_motif(
+            user_motif=user_motif,
+            num_measures=num_measures,
+            variation_freedom=variation_freedom,
+            detect_key=(key_name == "auto"),
+            add_bass=add_bass,
+            title=title,
+            composer=score_composer,
+        )
+
+        # Get detected key info for display
+        display_key = architect.scale_manager.key_name
+        display_mode = architect.scale_manager.mode
+
+        # Save files
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base_filename = f"develop_{display_key}_{display_mode}_{timestamp}"
+        ly_filepath = OUTPUT_DIR / f"{base_filename}.ly"
+
+        with open(ly_filepath, "w", encoding="utf-8") as f:
+            f.write(lilypond_code)
+
+        # Run LilyPond
+        pdf_path = None
+        midi_path = None
+        lilypond_error = None
+
+        try:
+            result = subprocess.run(
+                [
+                    "lilypond",
+                    "-dno-point-and-click",
+                    f"--output={OUTPUT_DIR / base_filename}",
+                    str(ly_filepath),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+
+            potential_pdf = OUTPUT_DIR / f"{base_filename}.pdf"
+            potential_midi = OUTPUT_DIR / f"{base_filename}.midi"
+
+            if potential_pdf.exists():
+                pdf_path = f"{base_filename}.pdf"
+            if potential_midi.exists():
+                midi_path = f"{base_filename}.midi"
+
+            if result.returncode != 0:
+                lilypond_error = result.stderr
+
+        except subprocess.TimeoutExpired:
+            lilypond_error = "LilyPond timed out after 60 seconds"
+        except FileNotFoundError:
+            lilypond_error = "LilyPond not found. Please install LilyPond."
+
+        return render_template(
+            "result.html",
+            success=True,
+            lilypond_code=lilypond_code,
+            pdf_path=pdf_path,
+            midi_path=midi_path,
+            ly_filename=f"{base_filename}.ly",
+            lilypond_error=lilypond_error,
+            key_name=display_key,
+            mode=display_mode,
+            meter=f"{meter_num}/{meter_den}",
+            num_measures=num_measures,
+        )
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
         return render_template(
             "result.html",
             success=False,

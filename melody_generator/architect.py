@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 import abjad
 
-from .models import ImpulseType, MelodicContour, Period
+from .models import ImpulseType, MelodicContour, Period, HarmonicFunction
 from .config import GenerationConfig, TonalConfig, MeterConfig, RhythmConfig, MelodyConfig, MotifConfig, MarkovConfig, ExpressionConfig
 from .scales import ScaleManager
 from .harmony import HarmonyManager
@@ -933,3 +933,527 @@ class MelodicArchitect:
                 else:
                     pitches.append(60)  # C4 como default
         return pitches
+
+    def develop_user_motif(
+        self,
+        user_motif: str,
+        num_measures: int = 8,
+        variation_freedom: int = 2,
+        detect_key: bool = True,
+        add_bass: bool = False,
+        title: str = "Desarrollo de Idea",
+        composer: str = "CompositorIA",
+    ) -> Tuple[abjad.Staff, str]:
+        """
+        Desarrolla un motivo proporcionado por el usuario.
+
+        El sistema toma el motivo del usuario como base y lo desarrolla
+        aplicando variaciones motívicas, sin cambiar la idea original.
+
+        Args:
+            user_motif: Notación LilyPond del motivo (e.g., "c'4 d' e' f'")
+            num_measures: Número de compases a generar
+            variation_freedom: 1=conservador, 2=moderado, 3=creativo
+            detect_key: Si True, intenta detectar la tonalidad del motivo
+            add_bass: Si True, agrega línea de bajo
+            title: Título para la partitura
+            composer: Nombre del compositor
+
+        Returns:
+            Tuple[Staff, str]: Staff con la melodía desarrollada y código LilyPond
+        """
+        import re
+
+        # Parse LilyPond notation to extract notes
+        notes_from_input = self._parse_lilypond_motif(user_motif)
+
+        if not notes_from_input:
+            raise ValueError(
+                "No se pudieron extraer notas del motivo. "
+                "Usa formato LilyPond: c'4 d' e' f' (nota + octava + duración)"
+            )
+
+        # Detect key if requested
+        if detect_key:
+            detected_key, detected_mode = self._analyze_motif_key(notes_from_input)
+            # Update scale manager with detected key
+            self.scale_manager = ScaleManager(detected_key, detected_mode)
+            self.key_name = detected_key
+            self.mode = detected_mode
+            # Update num_measures for the development
+            self.num_measures = num_measures
+
+        # Create the original motif as Abjad notes
+        original_notes = []
+        for note_data in notes_from_input:
+            pitch_str = note_data["pitch"]
+            duration_str = note_data["duration"]
+            try:
+                note = abjad.Note(f"{pitch_str}{duration_str}")
+                original_notes.append(note)
+            except Exception:
+                # Skip malformed notes
+                continue
+
+        if not original_notes:
+            raise ValueError("No se pudieron crear notas válidas del motivo")
+
+        # Calculate how many times to use the motif and variations
+        # to fill the requested measures
+        meter_num, meter_den = self.meter_tuple
+        beats_per_measure = meter_num * (4 / meter_den)
+        total_beats = beats_per_measure * num_measures
+
+        # Calculate duration of original motif
+        motif_duration = 0
+        for n in original_notes:
+            dur = abjad.get.duration(n)
+            # Duration can be accessed as a fraction
+            motif_duration += float(dur) * 4  # Convert to beats (quarter = 1)
+
+        # Build the piece
+        import copy
+        all_notes = []
+
+        # Start with original motif
+        for note in original_notes:
+            all_notes.append(copy.deepcopy(note))
+
+        current_beats = motif_duration
+
+        # Define variation types based on freedom level
+        if variation_freedom == 1:
+            variation_types = ["RHYTHMIC_AUGMENTATION", "RHYTHMIC_DIMINUTION"]
+        elif variation_freedom == 2:
+            variation_types = [
+                "RHYTHMIC_AUGMENTATION",
+                "RHYTHMIC_DIMINUTION",
+                "INTERVALIC_EXPANSION",
+                "TRANSPOSITION",
+            ]
+        else:
+            variation_types = [
+                "RHYTHMIC_AUGMENTATION",
+                "RHYTHMIC_DIMINUTION",
+                "INTERVALIC_EXPANSION",
+                "INTERVALIC_CONTRACTION",
+                "MELODIC_INVERSION",
+                "RETROGRADE",
+                "TRANSPOSITION",
+            ]
+
+        # Generate variations until we fill the measures
+        iteration = 0
+        max_iterations = 50  # Safety limit
+
+        while current_beats < total_beats and iteration < max_iterations:
+            iteration += 1
+
+            # Choose a variation type
+            import random
+            var_type = random.choice(variation_types)
+
+            # Apply variation to create new notes
+            varied_notes = self._apply_motif_variation(
+                original_notes, var_type, iteration
+            )
+
+            # Add to result
+            for note in varied_notes:
+                if current_beats >= total_beats:
+                    break
+                all_notes.append(note)
+                note_beats = float(abjad.get.duration(note)) * 4
+                current_beats += note_beats
+
+        # Create staff
+        staff = abjad.Staff(all_notes)
+
+        # Add time signature and key signature
+        time_sig = abjad.TimeSignature(self.meter_tuple)
+        abjad.attach(time_sig, staff[0])
+
+        key_sig = self._create_key_signature()
+        if key_sig:
+            abjad.attach(key_sig, staff[0])
+
+        # Generate LilyPond code
+        if add_bass:
+            # Generate bass line
+            melody_pitches = self._extract_melody_pitches(staff)
+            bass_config = BassConfig(style=BassStyle.SIMPLE, octave=3)
+
+            bass_generator = BassGenerator(
+                scale_manager=self.scale_manager,
+                harmony_manager=self.harmony_manager,
+                meter_tuple=self.meter_tuple,
+                config=bass_config,
+            )
+
+            # Create a simple harmonic plan based on measures
+            harmonic_plan = self._create_simple_harmonic_plan(num_measures)
+
+            bass_staff = bass_generator.generate_bass_line(
+                harmonic_plan=harmonic_plan,
+                melody_pitches=melody_pitches,
+            )
+
+            # Format as piano staff
+            lilypond_code = self.format_as_lilypond_polyphonic(
+                melody_staff=staff,
+                bass_staff=bass_staff,
+                title=title,
+                composer=composer,
+            )
+        else:
+            lilypond_code = self.format_as_lilypond(
+                staff,
+                title=title,
+                composer=composer,
+            )
+
+        return staff, lilypond_code
+
+    def _parse_lilypond_motif(self, lilypond_str: str) -> List[dict]:
+        """
+        Parsea una cadena de notación LilyPond a una lista de notas.
+
+        Args:
+            lilypond_str: Notación como "c'4 d' e'8 f'"
+
+        Returns:
+            Lista de dicts con pitch y duration
+        """
+        import re
+
+        # Clean input
+        lilypond_str = lilypond_str.strip()
+        lilypond_str = re.sub(r'\|', ' ', lilypond_str)  # Remove bar lines
+        lilypond_str = re.sub(r'\s+', ' ', lilypond_str)  # Normalize spaces
+
+        # Pattern for LilyPond notes:
+        # pitch: a-g with optional is/es (sharps/flats) and octave marks (',,)
+        # duration: optional number (1,2,4,8,16,32) with optional dots
+        note_pattern = r"([a-g](?:is|es|isis|eses)?[',]*)([\d]*\.?)"
+
+        notes = []
+        last_duration = "4"  # Default quarter note
+
+        for match in re.finditer(note_pattern, lilypond_str, re.IGNORECASE):
+            pitch = match.group(1).lower()
+            duration = match.group(2) if match.group(2) else last_duration
+
+            if duration:
+                last_duration = duration
+
+            notes.append({
+                "pitch": pitch,
+                "duration": duration,
+            })
+
+        return notes
+
+    def _analyze_motif_key(self, notes: List[dict]) -> Tuple[str, str]:
+        """
+        Analiza las notas para detectar la tonalidad probable.
+
+        Usa heurísticas simples:
+        - Primera/última nota como posible tónica
+        - Frecuencia de notas
+
+        Args:
+            notes: Lista de dicts con pitch info
+
+        Returns:
+            Tuple[key_name, mode]: Tonalidad detectada
+        """
+        if not notes:
+            return "C", "major"
+
+        # Extract pitch classes (without octave)
+        import re
+        pitch_classes = []
+        for note in notes:
+            pitch = note["pitch"]
+            # Remove octave marks
+            pitch_class = re.sub(r"[',]+", "", pitch)
+            pitch_classes.append(pitch_class)
+
+        # Count occurrences
+        from collections import Counter
+        counts = Counter(pitch_classes)
+
+        # First and last notes are often important
+        first_note = pitch_classes[0] if pitch_classes else "c"
+        last_note = pitch_classes[-1] if pitch_classes else "c"
+
+        # Use first note as potential tonic
+        # Map LilyPond pitch to key name
+        pitch_to_key = {
+            "c": "C", "cis": "C#", "ces": "Cb",
+            "d": "D", "dis": "D#", "des": "Db",
+            "e": "E", "eis": "E#", "ees": "Eb",
+            "f": "F", "fis": "F#", "fes": "Fb",
+            "g": "G", "gis": "G#", "ges": "Gb",
+            "a": "A", "ais": "A#", "aes": "Ab",
+            "b": "B", "bis": "B#", "bes": "Bb",
+        }
+
+        detected_key = pitch_to_key.get(first_note, "C")
+
+        # Simple mode detection: check for minor third
+        # If we find a minor 3rd from tonic, assume minor
+        mode = "major"
+
+        # Get semitones from tonic
+        pitch_semitones = {
+            "c": 0, "cis": 1, "des": 1, "d": 2, "dis": 3, "ees": 3,
+            "e": 4, "fes": 4, "eis": 5, "f": 5, "fis": 6, "ges": 6,
+            "g": 7, "gis": 8, "aes": 8, "a": 9, "ais": 10, "bes": 10,
+            "b": 11, "ces": 11, "bis": 0,
+        }
+
+        tonic_semitone = pitch_semitones.get(first_note, 0)
+
+        for pc in pitch_classes:
+            pc_semitone = pitch_semitones.get(pc, 0)
+            interval = (pc_semitone - tonic_semitone) % 12
+            if interval == 3:  # Minor third
+                mode = "minor"
+                break
+
+        return detected_key, mode
+
+    def _apply_motif_variation(
+        self,
+        notes: List[abjad.Note],
+        variation_type: str,
+        iteration: int,
+    ) -> List[abjad.Note]:
+        """
+        Aplica una variación al motivo original.
+
+        Args:
+            notes: Lista de notas originales
+            variation_type: Tipo de variación a aplicar
+            iteration: Número de iteración (para transposición)
+
+        Returns:
+            Lista de nuevas notas variadas
+        """
+        import random
+        import copy
+
+        def get_pitch(note):
+            """Get pitch from note, handling callable."""
+            pitch = note.written_pitch
+            if callable(pitch):
+                pitch = pitch()
+            return pitch
+
+        def get_pitch_name(note):
+            """Get pitch name string from note."""
+            pitch = get_pitch(note)
+            name = pitch.name
+            if callable(name):
+                name = name()
+            return name
+
+        def get_pitch_number(pitch):
+            """Get pitch number from pitch object, handling callable."""
+            number = pitch.number
+            if callable(number):
+                number = number()
+            return number
+
+        def get_duration(note):
+            """Get duration from note, handling callable."""
+            dur = note.written_duration
+            if callable(dur):
+                dur = dur()
+            return dur
+
+        def duration_to_string(dur: abjad.Duration) -> str:
+            """Convert duration to LilyPond string."""
+            # Common durations: 1=whole, 2=half, 4=quarter, 8=eighth, 16=sixteenth
+            dur_map = {
+                (1, 1): "1",
+                (1, 2): "2",
+                (1, 4): "4",
+                (1, 8): "8",
+                (1, 16): "16",
+                (1, 32): "32",
+                (3, 8): "4.",  # dotted quarter
+                (3, 4): "2.",  # dotted half
+                (3, 16): "8.",  # dotted eighth
+            }
+            key = (dur.numerator, dur.denominator)
+            if key in dur_map:
+                return dur_map[key]
+            # Default: try to find closest
+            if dur.numerator == 1:
+                return str(dur.denominator)
+            return "4"  # Default to quarter
+
+        def create_note(pitch_num: int, duration: abjad.Duration) -> abjad.Note:
+            """Create a note from pitch number and duration."""
+            pitch = abjad.NamedPitch(pitch_num)
+            pitch_name = pitch.name
+            if callable(pitch_name):
+                pitch_name = pitch_name()
+            dur_str = duration_to_string(duration)
+            note_str = f"{pitch_name}{dur_str}"
+            return abjad.Note(note_str)
+
+        def copy_with_new_duration(note, new_dur) -> abjad.Note:
+            """Copy note with new duration."""
+            pitch_name = get_pitch_name(note)
+            dur_str = duration_to_string(new_dur)
+            note_str = f"{pitch_name}{dur_str}"
+            return abjad.Note(note_str)
+
+        result = []
+
+        if variation_type == "RHYTHMIC_AUGMENTATION":
+            # Double durations
+            for note in notes:
+                dur = abjad.get.duration(note)
+                new_dur = abjad.Duration(dur.numerator * 2, dur.denominator)
+                # Limit to whole note max
+                if new_dur > abjad.Duration(1, 1):
+                    new_dur = abjad.Duration(1, 1)
+                result.append(copy_with_new_duration(note, new_dur))
+
+        elif variation_type == "RHYTHMIC_DIMINUTION":
+            # Halve durations
+            for note in notes:
+                dur = abjad.get.duration(note)
+                new_dur = abjad.Duration(dur.numerator, dur.denominator * 2)
+                # Limit to 16th note min
+                if new_dur < abjad.Duration(1, 16):
+                    new_dur = abjad.Duration(1, 16)
+                result.append(copy_with_new_duration(note, new_dur))
+
+        elif variation_type == "TRANSPOSITION":
+            # Transpose by 2nds, 3rds, or 5ths
+            intervals = [2, 3, 4, 5, 7]  # In semitones
+            interval = random.choice(intervals) * (1 if iteration % 2 == 0 else -1)
+            for note in notes:
+                pitch = get_pitch(note)
+                dur = get_duration(note)
+                new_pitch_num = get_pitch_number(pitch) + interval
+                # Keep within reasonable range
+                while new_pitch_num > 12:
+                    new_pitch_num -= 12
+                while new_pitch_num < -12:
+                    new_pitch_num += 12
+                result.append(create_note(new_pitch_num, dur))
+
+        elif variation_type == "MELODIC_INVERSION":
+            # Invert intervals around first note
+            if notes:
+                first_pitch = get_pitch(notes[0])
+                first_pitch_num = get_pitch_number(first_pitch)
+                for note in notes:
+                    pitch = get_pitch(note)
+                    dur = get_duration(note)
+                    interval = get_pitch_number(pitch) - first_pitch_num
+                    new_pitch_num = first_pitch_num - interval
+                    result.append(create_note(new_pitch_num, dur))
+
+        elif variation_type == "RETROGRADE":
+            # Reverse order
+            for note in reversed(notes):
+                result.append(copy.deepcopy(note))
+
+        elif variation_type == "INTERVALIC_EXPANSION":
+            # Expand intervals
+            if len(notes) >= 2:
+                result.append(copy.deepcopy(notes[0]))
+                last_pitch_num = get_pitch_number(get_pitch(notes[0]))
+                for i in range(1, len(notes)):
+                    prev_pitch = get_pitch(notes[i-1])
+                    curr_pitch = get_pitch(notes[i])
+                    dur = get_duration(notes[i])
+                    interval = get_pitch_number(curr_pitch) - get_pitch_number(prev_pitch)
+                    # Expand interval by ~1.5x
+                    new_interval = int(interval * 1.5) if interval != 0 else interval
+                    new_pitch_num = last_pitch_num + new_interval
+                    result.append(create_note(new_pitch_num, dur))
+                    last_pitch_num = new_pitch_num
+
+        elif variation_type == "INTERVALIC_CONTRACTION":
+            # Contract intervals
+            if len(notes) >= 2:
+                result.append(copy.deepcopy(notes[0]))
+                last_pitch_num = get_pitch_number(get_pitch(notes[0]))
+                for i in range(1, len(notes)):
+                    prev_pitch = get_pitch(notes[i-1])
+                    curr_pitch = get_pitch(notes[i])
+                    dur = get_duration(notes[i])
+                    interval = get_pitch_number(curr_pitch) - get_pitch_number(prev_pitch)
+                    # Contract interval by ~0.5x
+                    new_interval = int(interval * 0.5) if abs(interval) > 1 else interval
+                    new_pitch_num = last_pitch_num + new_interval
+                    result.append(create_note(new_pitch_num, dur))
+                    last_pitch_num = new_pitch_num
+
+        else:
+            # Default: return copy
+            for note in notes:
+                result.append(copy.deepcopy(note))
+
+        return result
+
+    def _create_key_signature(self) -> Optional[abjad.KeySignature]:
+        """Crea una firma de clave para el staff."""
+        try:
+            pitch_class = abjad.NamedPitchClass(self.key_name.lower())
+            mode_obj = abjad.Mode(self.mode)
+            return abjad.KeySignature(pitch_class, mode_obj)
+        except Exception:
+            return None
+
+    def _create_simple_harmonic_plan(self, num_measures: int) -> List[HarmonicFunction]:
+        """
+        Crea un plan armónico simple para el bajo.
+
+        Args:
+            num_measures: Número de compases
+
+        Returns:
+            Lista de HarmonicFunction para el bajo
+        """
+        plan = []
+        progression = [1, 4, 5, 1]  # I-IV-V-I básico
+
+        # Map degrees to chord qualities
+        quality_map = {
+            1: "major",
+            2: "minor",
+            3: "minor",
+            4: "major",
+            5: "major",
+            6: "minor",
+            7: "diminished",
+        }
+
+        # Map degrees to tension levels
+        tension_map = {
+            1: 0.0,  # Tonic - rest
+            4: 0.3,  # Subdominant - moderate
+            5: 0.7,  # Dominant - high tension
+        }
+
+        for i in range(num_measures):
+            degree = progression[i % len(progression)]
+            chord_tones = self.harmony_manager.get_chord_tones_for_function(degree)
+
+            plan.append(HarmonicFunction(
+                degree=degree,
+                quality=quality_map.get(degree, "major"),
+                tension=tension_map.get(degree, 0.3),
+                chord_tones=chord_tones,
+            ))
+
+        return plan

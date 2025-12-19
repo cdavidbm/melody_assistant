@@ -1,85 +1,175 @@
 {% if success %}
-<div class="result-container">
-    <h2>Melodia Generada</h2>
-
-    <div class="result-meta">
-        <span class="meta-item"><strong>Tonalidad:</strong> {{ key_name }} {{ mode }}</span>
-        <span class="meta-item"><strong>Compas:</strong> {{ meter }}</span>
-        <span class="meta-item"><strong>Compases:</strong> {{ num_measures }}</span>
-    </div>
-
-    {% if lilypond_error %}
-    <div class="warning-box">
-        <h4>Advertencia de LilyPond</h4>
-        <p>{{ lilypond_error }}</p>
-    </div>
-    {% endif %}
-
-    <!-- PDF Viewer -->
-    {% if pdf_path %}
-    <div class="result-section">
-        <h3>Partitura</h3>
-        <div class="pdf-container">
-            <embed src="{{ url_for('serve_output', filename=pdf_path) }}"
-                   type="application/pdf"
-                   width="100%"
-                   height="500px">
+<!-- Score tab -->
+<div class="tab-pane active" id="tab-score">
+    <div class="result-container">
+        <div class="result-meta">
+            <span class="meta-item"><strong>Tonalidad:</strong> {{ key_name }} {{ mode }}</span>
+            <span class="meta-item"><strong>Compas:</strong> {{ meter }}</span>
+            <span class="meta-item"><strong>Compases:</strong> {{ num_measures }}</span>
         </div>
-        <a href="{{ url_for('serve_output', filename=pdf_path) }}"
-           class="btn-download" download>
-            Descargar PDF
-        </a>
-    </div>
-    {% endif %}
 
-    <!-- MIDI Player -->
+        {% if lilypond_error %}
+        <div class="warning-box">
+            <h4>Advertencia de LilyPond</h4>
+            <p>{{ lilypond_error }}</p>
+        </div>
+        {% endif %}
+
+        {% if pdf_path %}
+        <embed src="{{ url_for('serve_output', filename=pdf_path) }}"
+               type="application/pdf"
+               class="pdf-viewer">
+        <div class="download-actions">
+            <a href="{{ url_for('serve_output', filename=pdf_path) }}" class="btn-download" download>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Descargar PDF
+            </a>
+        </div>
+        {% else %}
+        <div class="output-empty">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+            </svg>
+            <p>No se pudo generar el PDF</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Audio tab -->
+<div class="tab-pane" id="tab-audio">
     {% if midi_path %}
-    <div class="result-section">
-        <h3>Reproducir MIDI</h3>
-        <div class="midi-container">
-            <midi-player
-                src="{{ url_for('serve_output', filename=midi_path) }}"
-                sound-font>
-            </midi-player>
+    <div class="midi-container">
+        <midi-player
+            src="{{ url_for('serve_output', filename=midi_path) }}"
+            sound-font>
+        </midi-player>
+        <div class="download-actions">
+            <a href="{{ url_for('serve_output', filename=midi_path) }}" class="btn-download" download>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Descargar MIDI
+            </a>
         </div>
-        <a href="{{ url_for('serve_output', filename=midi_path) }}"
-           class="btn-download" download>
-            Descargar MIDI
-        </a>
+    </div>
+    {% else %}
+    <div class="output-empty">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+        <p>No se pudo generar el archivo MIDI</p>
     </div>
     {% endif %}
+</div>
 
-    <!-- LilyPond Code -->
-    <div class="result-section">
-        <h3>Codigo LilyPond</h3>
-        <div class="code-container">
-            <button class="btn-copy" onclick="copyCode()">Copiar codigo</button>
+<!-- Code tab -->
+<div class="tab-pane" id="tab-code">
+    <div class="code-viewer">
+        <div class="code-header">
+            <div class="code-header-left">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="16 18 22 12 16 6"/>
+                    <polyline points="8 6 2 12 8 18"/>
+                </svg>
+                <span>LilyPond (.ly)</span>
+            </div>
+            <button class="btn-copy" onclick="copyLilypondCode()">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                </svg>
+                Copiar
+            </button>
+        </div>
+        <div class="code-block">
             <pre><code id="lilypond-code">{{ lilypond_code }}</code></pre>
         </div>
-        <a href="{{ url_for('serve_output', filename=ly_filename) }}"
-           class="btn-download" download>
-            Descargar .ly
-        </a>
+        <div class="download-actions">
+            <a href="{{ url_for('serve_output', filename=ly_filename) }}" class="btn-download" download>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/>
+                    <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Descargar .ly
+            </a>
+        </div>
     </div>
 </div>
 
 <script>
-function copyCode() {
+function copyLilypondCode() {
     const code = document.getElementById('lilypond-code').textContent;
     navigator.clipboard.writeText(code).then(() => {
         const btn = document.querySelector('.btn-copy');
-        btn.textContent = 'Copiado!';
-        setTimeout(() => btn.textContent = 'Copiar codigo', 2000);
+        btn.classList.add('copied');
+        btn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+            Copiado!
+        `;
+        setTimeout(() => {
+            btn.classList.remove('copied');
+            btn.innerHTML = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect width="14" height="14" x="8" y="8" rx="2" ry="2"/>
+                    <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>
+                </svg>
+                Copiar
+            `;
+        }, 2000);
     });
 }
+
+// Re-initialize tabs after HTMX swap
+document.querySelectorAll('.output-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.output-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+        this.classList.add('active');
+        const tabId = 'tab-' + this.dataset.tab;
+        document.getElementById(tabId).classList.add('active');
+    });
+});
 </script>
 
 {% else %}
-<div class="error-container">
-    <h2>Error al generar la melodia</h2>
-    <div class="error-box">
-        <p>{{ error }}</p>
+<!-- Error state - show in all tabs -->
+<div class="tab-pane active" id="tab-score">
+    <div class="error-container">
+        <h2>Error al generar</h2>
+        <div class="error-box">
+            <p>{{ error }}</p>
+        </div>
+        <p>Por favor, verifica los parametros e intenta nuevamente.</p>
     </div>
-    <p>Por favor, verifica los parametros e intenta nuevamente.</p>
+</div>
+<div class="tab-pane" id="tab-audio">
+    <div class="output-empty">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
+            <path d="M15.54 8.46a5 5 0 0 1 0 7.07"/>
+        </svg>
+        <p>No disponible debido a error</p>
+    </div>
+</div>
+<div class="tab-pane" id="tab-code">
+    <div class="output-empty">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="16 18 22 12 16 6"/>
+            <polyline points="8 6 2 12 8 18"/>
+        </svg>
+        <p>No disponible debido a error</p>
+    </div>
 </div>
 {% endif %}

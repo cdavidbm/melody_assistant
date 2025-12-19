@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Generador de Melodías{% endblock %}</title>
+    <title>{% block title %}CompositorIA - Generador de Melodías{% endblock %}</title>
 
     <!-- HTMX -->
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
@@ -16,8 +16,31 @@
 </head>
 <body>
     <header>
-        <h1>Generador de Melodias</h1>
-        <p class="subtitle">Protocolo Symmetry & Logic</p>
+        <div class="header-content">
+            <div class="header-brand">
+                <div class="header-logo">
+                    <!-- Music note icon -->
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M9 18V5l12-2v13"/>
+                        <circle cx="6" cy="18" r="3"/>
+                        <circle cx="18" cy="16" r="3"/>
+                    </svg>
+                    <!-- Sparkle icon -->
+                    <svg class="sparkle" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="header-title">Compositor<span>IA</span></h1>
+                    <p class="header-subtitle">Asistente de composición musical</p>
+                </div>
+            </div>
+            <nav class="header-nav">
+                <a href="#">Documentación</a>
+                <a href="#">Ejemplos</a>
+                <a href="#">API</a>
+            </nav>
+        </div>
     </header>
 
     <main>
@@ -25,7 +48,9 @@
     </main>
 
     <footer>
-        <p>MelodicArchitect AI &bull; Powered by music21, Abjad & LilyPond</p>
+        <p>CompositorIA &bull; Powered by music21, Abjad & LilyPond</p>
     </footer>
+
+    {% block scripts %}{% endblock %}
 </body>
 </html>
