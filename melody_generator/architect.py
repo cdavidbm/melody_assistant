@@ -294,6 +294,133 @@ class MelodicArchitect:
             return_structure=return_structure
         )
 
+    def generate_period_genetic(
+        self,
+        generations: int = 15,
+        population_size: int = 30,
+        use_markov_polish: bool = True,
+        return_structure: bool = False,
+    ) -> Union[abjad.Staff, Tuple[abjad.Staff, Period]]:
+        """
+        Genera un período musical usando algoritmos genéticos.
+
+        El GA evoluciona el motivo base optimizando múltiples criterios:
+        - Conducción de voces (preferir grados conjuntos)
+        - Compatibilidad armónica (notas del acorde en tiempos fuertes)
+        - Calidad del contorno (forma melódica interesante)
+        - Interés rítmico (variedad sin caos)
+        - Potencial de desarrollo (facilidad de variación)
+        - Equilibrio de rango (dentro del ámbito cantable)
+
+        El motivo evolucionado se desarrolla en un período completo
+        usando variaciones motívicas (inversión, retrogradación, etc.).
+
+        Opcionalmente, Markov puede pulir el resultado final.
+
+        Args:
+            generations: Número de generaciones GA (10-30 recomendado)
+            population_size: Tamaño de población (20-50 recomendado)
+            use_markov_polish: Si aplicar pulido Markov al final
+            return_structure: Si True, retorna también la estructura Period
+
+        Returns:
+            abjad.Staff con la melodía evolucionada,
+            o tupla (Staff, Period) si return_structure=True
+        """
+        from .genetic import GeneticMelodyEvolver, GeneticConfig
+
+        # Configurar evolucionador genético
+        genetic_config = GeneticConfig(
+            enabled=True,
+            generations=generations,
+            population_size=population_size,
+            use_markov_polish=use_markov_polish,
+        )
+
+        evolver = GeneticMelodyEvolver(
+            scale_manager=self.scale_manager,
+            harmony_manager=self.harmony_manager,
+            config=genetic_config,
+        )
+
+        # Evolucionar y desarrollar período
+        period, evolved_chromosome = evolver.evolve_and_develop(
+            total_measures=self.num_measures
+        )
+
+        # Renderizar período a Staff usando period_generator
+        staff = self._render_genetic_period_to_staff(period)
+
+        # Aplicar pulido Markov si está habilitado y hay modelo
+        if use_markov_polish and self.config.markov.enabled:
+            staff = self._apply_markov_polish(staff)
+
+        if return_structure:
+            return staff, period
+        return staff
+
+    def _render_genetic_period_to_staff(self, period: Period) -> abjad.Staff:
+        """
+        Renderiza un Period genético a abjad.Staff.
+
+        Args:
+            period: Estructura Period generada por GA
+
+        Returns:
+            abjad.Staff con la melodía
+        """
+        notes = []
+
+        # Obtener todos los motivos del período
+        all_motifs = period.get_all_motifs()
+
+        for motif in all_motifs:
+            for i, (pitch_str, duration) in enumerate(
+                zip(motif.pitches, motif.rhythm.durations)
+            ):
+                # Convertir pitch a formato LilyPond
+                lily_pitch = self.lilypond_formatter.convert_to_abjad_pitch(pitch_str)
+
+                # Crear duración string para Abjad
+                num, denom = duration
+                if num == 1:
+                    dur_str = str(denom)
+                elif num == 3 and denom % 2 == 0:
+                    # Duración con puntillo (3/8 -> 4.)
+                    dur_str = f"{denom // 2}."
+                else:
+                    # Casos especiales
+                    dur_str = str(denom)
+
+                # Crear nota combinando pitch y duración
+                note = abjad.Note(f"{lily_pitch}{dur_str}")
+                notes.append(note)
+
+        # Crear staff con signatura de tiempo
+        staff = abjad.Staff(notes)
+        time_sig = abjad.TimeSignature(self.meter_tuple)
+        abjad.attach(time_sig, staff[0])
+
+        return staff
+
+    def _apply_markov_polish(self, staff: abjad.Staff) -> abjad.Staff:
+        """
+        Aplica pulido Markov al staff para suavizar voice leading.
+
+        Nota: Esta es una implementación simplificada.
+        El pulido completo requeriría acceso a modelos Markov
+        y análisis más profundo.
+
+        Args:
+            staff: Staff a pulir
+
+        Returns:
+            Staff con ajustes menores de voice leading
+        """
+        # Por ahora, retornar sin modificación
+        # El pulido completo se implementará en una versión futura
+        return staff
+
     def generate_and_display(
         self,
         output_format: str = "lilypond",

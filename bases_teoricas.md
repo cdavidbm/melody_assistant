@@ -17,6 +17,13 @@ Este documento define las reglas de teoria musical clasica que el sistema debe i
 9. [Variaciones Motivicas](#9-variaciones-motivicas)
 10. [Contrapunto](#10-contrapunto)
 11. [Modos y Escalas](#11-modos-y-escalas)
+    - 11.1 Concepto Fundamental: Diatonismo Modal
+    - 11.2 Relacion Modos - Escalas Madre
+    - 11.3 Nota Caracteristica (Color Note)
+    - 11.4 Espectro de Brillantez Modal
+    - 11.5-11.8 Modos Diatonicos y Derivados
+    - 11.9 Reglas para Generacion Modal
+    - 11.10 Microtonalidad (Investigacion Futura)
 
 ---
 
@@ -420,36 +427,135 @@ Reglas para melodias que se combinan polifonicamente.
 
 ## 11. Modos y Escalas
 
-### 11.1 Modos Diatonicos (de escala mayor)
+### 11.1 Concepto Fundamental: Diatonismo Modal
 
-| Modo | Grados alterados | Caracter |
-|------|------------------|----------|
+**Punto critico**: Cada modo tiene su propia escala diatonica. Lo que parece "cromatico" en un modo puede ser completamente diatonico en otro.
+
+Por ejemplo, **C Lidio** usa las notas: C D E **F#** G A B. El F# NO es una alteracion cromatica - es el **4to grado natural del modo Lidio**. Esto es porque C Lidio comparte las mismas notas que G Mayor (su escala madre).
+
+### 11.2 Relacion Modos - Escalas Madre
+
+Cada modo diatonico es un rotacion de la escala mayor. La "escala madre" determina que notas son diatonicas:
+
+| Modo | Escala Madre | Grado | Notas en C |
+|------|--------------|-------|------------|
+| C Jonico | C Mayor | I | C D E F G A B |
+| C Dorico | Bb Mayor | II | C D Eb F G A Bb |
+| C Frigio | Ab Mayor | III | C Db Eb F G Ab Bb |
+| C Lidio | **G Mayor** | IV | C D E **F#** G A B |
+| C Mixolidio | F Mayor | V | C D E F G A Bb |
+| C Eolico | Eb Mayor | VI | C D Eb F G Ab Bb |
+| C Locrio | Db Mayor | VII | C Db Eb F Gb Ab Bb |
+
+**Implicacion para la generacion**: El sistema NO debe filtrar como "cromatico" una nota que es diatonica al modo actual. El F# en C Lidio es tan natural como el F en C Mayor.
+
+### 11.3 Nota Caracteristica (Color Note)
+
+Cada modo tiene una nota distintiva que lo define y **DEBE enfatizarse** (no evitarse). Esta nota es la "firma sonora" del modo:
+
+| Modo | Nota Caracteristica | vs Referencia | Caracter |
+|------|---------------------|---------------|----------|
+| Lidio | **#4** | vs Mayor | Etereo, sonador, flotante |
+| Jonico | (ninguna) | referencia Mayor | Brillante, estable |
+| Mixolidio | **b7** | vs Mayor | Blues, rock, folk |
+| Dorico | **nat6** | vs Menor | "Menor brillante", jazz |
+| Eolico | (ninguna) | referencia Menor | Melancolico, natural |
+| Frigio | **b2** | vs Menor | Espanol, flamenco, dramatico |
+| Locrio | **b5** | vs Menor | Inestable, tenso, raro |
+
+**Regla de composicion**: La nota caracteristica debe aparecer en momentos prominentes para establecer claramente el caracter modal. Si no se usa, el oyente percibira el modo como mayor o menor estandar.
+
+### 11.4 Espectro de Brillantez Modal
+
+Los modos se organizan en un continuo de "brillante" a "oscuro" basado en la cantidad de notas sostenidas vs bemoles:
+
+```
+BRILLANTES (con 3a Mayor):
+    Lidio (#4)  -->  Jonico  -->  Mixolidio (b7)
+         |              |              |
+    mas brillante   neutro      menos brillante
+
+OSCUROS (con 3a menor):
+    Dorico (nat6)  -->  Eolico  -->  Frigio (b2)  -->  Locrio (b5)
+          |              |              |                  |
+    "menor brillante"  neutro     muy oscuro        extremadamente oscuro
+```
+
+**Aplicacion practica**: Al componer, el caracter del modo debe reflejarse en el tratamiento melodico. Un Lidio debe "flotar" hacia arriba; un Frigio debe insistir en el b2 descendente.
+
+### 11.5 Modos Diatonicos (de escala mayor)
+
+| Modo | Grados alterados (vs Mayor) | Caracter |
+|------|----------------------------|----------|
 | Jonico (Mayor) | ninguno | Brillante, alegre |
-| Dorico | b3, b7 | Modal, jazzy |
-| Frigio | b2, b3, b6, b7 | Espanol, oscuro |
-| Lidio | #4 | Etereo, sonador |
-| Mixolidio | b7 | Blues, rock |
+| Dorico | b3, b7 | Modal, jazzy, "menor brillante" |
+| Frigio | b2, b3, b6, b7 | Espanol, oscuro, dramatico |
+| Lidio | #4 | Etereo, sonador, flotante |
+| Mixolidio | b7 | Blues, rock, folklorico |
 | Eolico (Menor) | b3, b6, b7 | Triste, melancolico |
 | Locrio | b2, b3, b5, b6, b7 | Inestable, disonante |
 
-### 11.2 Escalas Menores
+### 11.6 Escalas Menores
 
-| Escala | Caracteristica |
-|--------|----------------|
-| **Menor natural** | = Eolico |
-| **Menor armonica** | 7mo grado elevado (sensible) |
-| **Menor melodica** | 6to y 7mo elevados (ascendente) |
+| Escala | Caracteristica | Uso tipico |
+|--------|----------------|------------|
+| **Menor natural** | = Eolico | Melodia descendente |
+| **Menor armonica** | 7mo grado elevado (sensible) | Cadencias, armonia |
+| **Menor melodica** | 6to y 7mo elevados (ascendente) | Melodia ascendente |
 
-### 11.3 Modos Derivados
+**Practica comun**: En musica clasica, las tres formas se usan segun el contexto melodico/armonico. La menor melodica asciende con 6 y 7 elevados, desciende como menor natural.
 
-**De menor armonica**: Locrio nat6, Jonico aug5, Dorico #4, Frigio dominante, Lidio #2, Superlocrio
+### 11.7 Modos Derivados de Menor Armonica
 
-**De menor melodica**: Dorico b2, Lidio aumentado, Lidio dominante, Mixolidio b6, Locrio nat2, Alterado
+La escala menor armonica genera 7 modos adicionales:
+
+| Modo | Alteraciones | Caracter |
+|------|--------------|----------|
+| Locrio nat6 | b2, b3, b5 (nat6) | Locrio suavizado |
+| Jonico aug5 | #5 | Mayor con tension aumentada |
+| Dorico #4 (Ucraniano) | b3, b7, #4 | Dorico con color lidio |
+| Frigio dominante | b2, b6, b7 (3a Mayor) | Flamenco, judaico |
+| Lidio #2 | #2, #4 | Lidio exotico |
+| Superlocrio bb7 | b2, b3, b4, b5, b6, bb7 | Extremadamente inestable |
+
+### 11.8 Modos Derivados de Menor Melodica
+
+La escala menor melodica genera 7 modos con aplicaciones en jazz:
+
+| Modo | Alteraciones | Uso comun |
+|------|--------------|-----------|
+| Dorico b2 (Frigio #6) | b2, b3 | Sobre acordes sus(b9) |
+| Lidio aumentado | #4, #5 | Sobre acordes Maj7#5 |
+| Lidio dominante | #4, b7 | Sobre acordes 7#11 |
+| Mixolidio b6 | b6, b7 | Sobre acordes V7 de menor |
+| Locrio nat2 (Semilocrio) | b3, b5, b6, b7 (nat2) | Sobre acordes m7b5 |
+| Alterado (Superlocrio) | b2, b3, b4, b5, b6, b7 | Sobre acordes alterados |
+
+### 11.9 Reglas para Generacion Modal
+
+1. **Usar ScaleManager** para obtener los pitch classes correctos del modo, no templates fijos de mayor/menor
+2. **Nunca filtrar como cromatico** lo que es diatonico al modo actual
+3. **Enfatizar la nota caracteristica** en tiempos fuertes y puntos estructurales
+4. **Respetar el caracter** del modo (brillante/oscuro) en el contorno melodico
+5. **Adaptar las cadencias** al contexto modal (no siempre V-I funciona igual)
+
+### 11.10 Nota sobre Microtonalidad (Investigacion Futura)
+
+Los sistemas temperados dividen la octava en 12 partes iguales (12-TET). Existen otros sistemas:
+
+| Sistema | Division de octava | Uso |
+|---------|-------------------|-----|
+| 24-TET | 24 (cuartos de tono) | Musica arabe/persa |
+| 31-TET | 31 | Entonacion justa aproximada |
+| 53-TET | 53 | Harry Partch, microtonalidad extendida |
+
+music21 soporta microtones via `pitch.Microtone`, pero la implementacion esta fuera del alcance actual. Requiere investigacion adicional antes de implementar.
 
 ---
 
 ## Referencias
 
+### Estructura y Armonia
 - [Counterpoint - Wikipedia](https://en.wikipedia.org/wiki/Counterpoint)
 - [Voice Leading - Wikipedia](https://en.wikipedia.org/wiki/Voice_leading)
 - [Cadence - Wikipedia](https://en.wikipedia.org/wiki/Cadence)
@@ -460,6 +566,16 @@ Reglas para melodias que se combinan polifonicamente.
 - [Fundamentals, Function, and Form - Nonharmonic Tones](https://milnepublishing.geneseo.edu/fundamentals-function-form/chapter/15-nonharmonic-tones/)
 - [Music Theory Academy - Cadences](https://www.musictheoryacademy.com/how-to-read-sheet-music/cadences/)
 - [Introduction to Non-Chord Tones](https://musictheory.pugetsound.edu/mt21c/NonChordTonesIntroduction.html)
+
+### Modos y Escalas
+- [Wikipedia - Mode (music)](https://en.wikipedia.org/wiki/Mode_(music))
+- [Berklee - Music Modes Explained](https://online.berklee.edu/takenote/music-modes-major-and-minor/)
+- [Open Music Theory - Diatonic Modes](https://viva.pressbooks.pub/openmusictheory/chapter/diatonic-modes/)
+- [Musical U - The Many Moods of Musical Modes](https://www.musical-u.com/learn/the-many-moods-of-musical-modes/)
+
+### Microtonalidad (Investigacion Futura)
+- [Wikipedia - Microtonality](https://en.wikipedia.org/wiki/Microtonality)
+- [Britannica - Microtonal music](https://www.britannica.com/art/microtonal-music)
 
 ---
 

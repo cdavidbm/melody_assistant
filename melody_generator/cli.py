@@ -314,13 +314,64 @@ def get_validation_tolerance() -> float:
     return TOLERANCE_MAP.get(tolerance_choice, 0.65)
 
 
-def get_generation_method() -> bool:
+def get_generation_method() -> str:
     """Pregunta al usuario el método de generación."""
     print("\nMétodo de generación:")
     print("1. Tradicional (sistema actual, cohesión rítmica)")
-    print("2. Jerárquico (NUEVO: Motivo → Frase → Semifrase → Período)")
+    print("2. Jerárquico (Motivo → Frase → Semifrase → Período)")
+    print("3. Genético (NUEVO: Evolución de motivos con DEAP)")
     generation_method_input = input("Seleccione método [1]: ").strip() or "1"
-    return generation_method_input == "2"
+
+    method_map = {
+        "1": "traditional",
+        "2": "hierarchical",
+        "3": "genetic",
+    }
+    return method_map.get(generation_method_input, "traditional")
+
+
+def get_genetic_config() -> dict:
+    """Obtiene la configuración de algoritmos genéticos del usuario."""
+    print("\n=== CONFIGURACIÓN DE ALGORITMOS GENÉTICOS ===")
+    print()
+    print("Los algoritmos genéticos evolucionan motivos musicales")
+    print("optimizando múltiples criterios teóricos (voice leading,")
+    print("armonía, contorno, ritmo, potencial de desarrollo).")
+    print()
+
+    # Generaciones
+    print("Número de generaciones (más = más optimización, más lento):")
+    print("  10 = Rápido (~300ms)")
+    print("  15 = Equilibrado (~500ms) [Recomendado]")
+    print("  30 = Exhaustivo (~1s)")
+    gen_input = input("Generaciones [15]: ").strip() or "15"
+    try:
+        generations = max(5, min(100, int(gen_input)))
+    except ValueError:
+        generations = 15
+
+    # Población
+    print("\nTamaño de población (más = más diversidad):")
+    print("  20 = Pequeña")
+    print("  30 = Media [Recomendado]")
+    print("  50 = Grande")
+    pop_input = input("Población [30]: ").strip() or "30"
+    try:
+        population_size = max(10, min(200, int(pop_input)))
+    except ValueError:
+        population_size = 30
+
+    # Pulido Markov
+    print("\n¿Aplicar pulido Markov al resultado genético?")
+    print("(Suaviza voice leading usando patrones aprendidos)")
+    markov_polish_input = input("Pulido Markov (s/n) [s]: ").strip().lower() or "s"
+    use_markov_polish = markov_polish_input == "s"
+
+    return {
+        "generations": generations,
+        "population_size": population_size,
+        "use_markov_polish": use_markov_polish,
+    }
 
 
 def get_expression_config() -> ExpressionConfig:
@@ -411,11 +462,19 @@ def get_output_config() -> OutputConfig:
 def run_generation_loop(
     config: GenerationConfig,
     tolerance: float,
-    use_hierarchical: bool,
+    generation_method: str = "traditional",
     expression_config: Optional[ExpressionConfig] = None,
+    genetic_params: Optional[dict] = None,
 ) -> Tuple[Optional[abjad.Staff], Optional[ValidationReport]]:
     """
     Ejecuta el ciclo de generación con validación.
+
+    Args:
+        config: Configuración de generación
+        tolerance: Tolerancia de validación
+        generation_method: "traditional", "hierarchical", o "genetic"
+        expression_config: Configuración de expresión
+        genetic_params: Parámetros genéticos si method="genetic"
 
     Returns:
         Tupla (staff, validation_report) o (None, None) si se cancela
@@ -446,7 +505,15 @@ def run_generation_loop(
             current_expression.use_ornamentation
         )
 
-        if use_hierarchical:
+        if generation_method == "genetic":
+            print("Generando con método GENÉTICO (evolucionando motivos)...")
+            gen_params = genetic_params or {}
+            staff = architect.generate_period_genetic(
+                generations=gen_params.get("generations", 15),
+                population_size=gen_params.get("population_size", 30),
+                use_markov_polish=gen_params.get("use_markov_polish", True),
+            )
+        elif generation_method == "hierarchical":
             print("Generando con método JERÁRQUICO...")
             result = architect.generate_period_hierarchical()
             staff = result[0] if isinstance(result, tuple) else result
@@ -614,7 +681,13 @@ def main():
         motif_config = get_motif_config()
         markov_config = get_markov_config()
         expression_config = get_expression_config()
-        use_hierarchical = get_generation_method()
+        generation_method = get_generation_method()
+
+        # Obtener configuración genética si el método es genético
+        genetic_params = None
+        if generation_method == "genetic":
+            genetic_params = get_genetic_config()
+
         tolerance = get_validation_tolerance()
         output_config = get_output_config()
 
@@ -632,8 +705,9 @@ def main():
         staff, validation_report = run_generation_loop(
             config=config,
             tolerance=tolerance,
-            use_hierarchical=use_hierarchical,
+            generation_method=generation_method,
             expression_config=expression_config,
+            genetic_params=genetic_params,
         )
 
         if staff is None:

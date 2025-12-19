@@ -176,6 +176,17 @@ from .sequences import (
     MelodicSequence,
 )
 
+# Algoritmos genéticos
+from .genetic import (
+    GeneticMelodyEvolver,
+    GeneticConfig,
+    GeneticContext,
+    MotifGene,
+    MotifFitnessEvaluator,
+    VALID_DURATIONS,
+    MODE_CHARACTERISTIC_DEGREES,
+)
+
 # Constantes de teoría musical
 from .constants import (
     VOICE_LEADING_SCORES,
@@ -283,6 +294,14 @@ __all__ = [
     "SequenceGenerator",
     "SequenceType",
     "MelodicSequence",
+    # Algoritmos genéticos
+    "GeneticMelodyEvolver",
+    "GeneticConfig",
+    "GeneticContext",
+    "MotifGene",
+    "MotifFitnessEvaluator",
+    "VALID_DURATIONS",
+    "MODE_CHARACTERISTIC_DEGREES",
     # Utilidades
     "MarkovModelLoader",
     "AbjadMusic21Converter",
