@@ -155,3 +155,12 @@ class ScaleManager:
     def get_tonic(self):
         """Retorna el objeto tónica de la tonalidad."""
         return self.key_obj.tonic
+
+    def get_scale_pitches(self) -> List[str]:
+        """
+        Retorna una lista de nombres de pitches de la escala (sin octava).
+
+        Returns:
+            Lista de nombres de notas (ej: ['C', 'D', 'E', 'F', 'G', 'A', 'B'])
+        """
+        return [p.name for p in self.scale.pitches[:7]]

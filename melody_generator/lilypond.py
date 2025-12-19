@@ -164,6 +164,8 @@ class LilyPondFormatter:
         """
         Convierte un Staff de Abjad a código LilyPond con notación absoluta.
 
+        Incluye dinámicas, articulaciones, slurs y otras expresiones.
+
         Returns:
             String con código LilyPond usando notación absoluta
         """
@@ -175,6 +177,8 @@ class LilyPondFormatter:
         lily_elements = []
 
         for i, leaf in enumerate(leaves):
+            note_str = ""
+
             if isinstance(leaf, abjad.Note):
                 pitch_obj = leaf.written_pitch()
                 pitch_str_english = pitch_obj._get_lilypond_format()
@@ -194,7 +198,7 @@ class LilyPondFormatter:
                 else:
                     lily_duration = str(denominator)
 
-                lily_elements.append(f"{pitch_str}{lily_duration}")
+                note_str = f"{pitch_str}{lily_duration}"
 
             elif isinstance(leaf, abjad.Rest):
                 duration_obj = leaf.written_duration()
@@ -209,19 +213,92 @@ class LilyPondFormatter:
                 else:
                     lily_duration = str(denominator)
 
-                lily_elements.append(f"r{lily_duration}")
+                note_str = f"r{lily_duration}"
 
+            # Procesar indicadores (expresiones) adjuntos a esta nota
             indicators = abjad.get.indicators(leaf)
+            articulation_str = ""
+            dynamic_str = ""
+            hairpin_str = ""
+            slur_start = ""
+            slur_end = ""
+            barline_str = ""
+
+            ornament_str = ""
+
             for indicator in indicators:
-                if isinstance(indicator, abjad.BarLine):
-                    if indicator.abbreviation == "|.":
-                        lily_elements.append('\\bar "|."')
+                # Dinámicas
+                if isinstance(indicator, abjad.Dynamic):
+                    dynamic_str = f"\\{indicator.name}"
+                # Hairpins (crescendo/diminuendo)
+                elif isinstance(indicator, abjad.StartHairpin):
+                    if indicator.shape == "<":
+                        hairpin_str = "\\<"
+                    elif indicator.shape == ">":
+                        hairpin_str = "\\>"
+                elif isinstance(indicator, abjad.StopHairpin):
+                    hairpin_str = "\\!"
+                # Articulaciones
+                elif isinstance(indicator, abjad.Articulation):
+                    art_name = indicator.name
+                    if art_name == "staccato":
+                        articulation_str = "-."
+                    elif art_name == "staccatissimo":
+                        articulation_str = "-!"
+                    elif art_name == "tenuto":
+                        articulation_str = "--"
+                    elif art_name == "accent":
+                        articulation_str = "->"
+                    elif art_name == "marcato":
+                        articulation_str = "-^"
                     else:
-                        lily_elements.append("|")
+                        articulation_str = f"-\\{art_name}"
+                # Fermata
+                elif isinstance(indicator, abjad.Fermata):
+                    articulation_str = "\\fermata"
+                # Slurs
+                elif isinstance(indicator, abjad.StartSlur):
+                    slur_start = "("
+                elif isinstance(indicator, abjad.StopSlur):
+                    slur_end = ")"
+                # Barlines
+                elif isinstance(indicator, abjad.BarLine):
+                    if indicator.abbreviation == "|.":
+                        barline_str = '\\bar "|."'
+                    else:
+                        barline_str = "|"
+                # Ornamentos (LilyPondLiteral)
+                elif isinstance(indicator, abjad.LilyPondLiteral):
+                    literal_arg = indicator.argument
+                    # Filtrar ornamentos conocidos
+                    if literal_arg in ["\\trill", "\\mordent", "\\prall", "\\turn"]:
+                        ornament_str = literal_arg
+
+            # Construir el elemento completo
+            # Orden: nota + ornamento + articulacion + dinamica + hairpin + slur_end + slur_start + barline
+            full_element = note_str
+            if ornament_str:
+                full_element += ornament_str
+            if articulation_str:
+                full_element += articulation_str
+            if dynamic_str:
+                full_element += " " + dynamic_str
+            if hairpin_str:
+                full_element += " " + hairpin_str
+            if slur_end:
+                full_element += slur_end
+            if slur_start:
+                full_element += slur_start
+
+            if full_element:
+                lily_elements.append(full_element)
+
+            if barline_str:
+                lily_elements.append(barline_str)
 
         output_lines = []
         current_line = []
-        elements_per_line = 6
+        elements_per_line = 4  # Menos elementos por linea para mayor legibilidad
 
         for elem in lily_elements:
             current_line.append(elem)

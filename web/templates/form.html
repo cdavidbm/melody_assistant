@@ -187,6 +187,56 @@
             </div>
         </fieldset>
 
+        <!-- Expresion Musical -->
+        <fieldset>
+            <legend>Expresion Musical (Opcional)</legend>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="ornamentation_style">Estilo de ornamentacion</label>
+                    <select name="ornamentation_style" id="ornamentation_style">
+                        {% for value, label in ornamentation_styles %}
+                        <option value="{{ value }}" {{ 'selected' if value == defaults.ornamentation_style else '' }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="use_dynamics" id="use_dynamics" {{ 'checked' if defaults.use_dynamics else '' }}>
+                    <label for="use_dynamics">Usar dinamicas automaticas</label>
+                </div>
+
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="use_articulations" id="use_articulations" {{ 'checked' if defaults.use_articulations else '' }}>
+                    <label for="use_articulations">Usar articulaciones</label>
+                </div>
+            </div>
+
+            <div class="dynamics-options" id="dynamics-options">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="base_dynamic">Dinamica base</label>
+                        <select name="base_dynamic" id="base_dynamic">
+                            {% for value, label in dynamic_levels %}
+                            <option value="{{ value }}" {{ 'selected' if value == defaults.base_dynamic else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="climax_dynamic">Dinamica de climax</label>
+                        <select name="climax_dynamic" id="climax_dynamic">
+                            {% for value, label in dynamic_levels %}
+                            <option value="{{ value }}" {{ 'selected' if value == defaults.climax_dynamic else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        </fieldset>
+
         <!-- Informacion de Partitura -->
         <fieldset>
             <legend>Informacion de Partitura</legend>
@@ -218,8 +268,15 @@
         document.getElementById('markov-options').style.display = this.checked ? 'block' : 'none';
     });
 
+    // Toggle dynamics options visibility
+    document.getElementById('use_dynamics').addEventListener('change', function() {
+        document.getElementById('dynamics-options').style.display = this.checked ? 'block' : 'none';
+    });
+
     // Initialize visibility
     document.getElementById('markov-options').style.display =
         document.getElementById('use_markov').checked ? 'block' : 'none';
+    document.getElementById('dynamics-options').style.display =
+        document.getElementById('use_dynamics').checked ? 'block' : 'none';
 </script>
 {% endblock %}

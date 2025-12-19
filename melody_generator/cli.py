@@ -22,8 +22,18 @@ from .config import (
     ValidationConfig,
     OutputConfig,
 )
-from .architect import MelodicArchitect
+from .architect import MelodicArchitect, ExpressionConfig
 from .validation import MusicValidator, ValidationReport, AutoCorrector
+
+
+# Mapeo de estilos de ornamentación
+ORNAMENTATION_STYLE_MAP = {
+    "1": "baroque",
+    "2": "classical",
+    "3": "romantic",
+    "4": "minimal",
+    "5": "none",
+}
 
 
 # Mapeo de selección de modo
@@ -312,6 +322,75 @@ def get_generation_method() -> bool:
     return generation_method_input == "2"
 
 
+def get_expression_config() -> ExpressionConfig:
+    """Obtiene la configuración de expresión musical del usuario."""
+    print("\n=== CARACTERÍSTICAS EXPRESIVAS ===")
+    print()
+    print("Estas características añaden ornamentos, dinámicas y articulaciones")
+    print("a la melodía generada para mayor musicalidad.")
+    print()
+
+    # Ornamentación
+    print("Estilo de ornamentación:")
+    print("1. Barroco (muchos ornamentos: trinos, mordentes, appoggiaturas)")
+    print("2. Clásico (ornamentos moderados)")
+    print("3. Romántico (expresivo, notas de paso cromáticas)")
+    print("4. Mínimo (solo ornamentos esenciales)")
+    print("5. Ninguno (sin ornamentos)")
+    orn_choice = input("Seleccione estilo [5]: ").strip() or "5"
+    orn_style = ORNAMENTATION_STYLE_MAP.get(orn_choice, "none")
+    use_ornamentation = orn_style != "none"
+
+    # Dinámicas
+    use_dynamics_input = (
+        input("\n¿Añadir dinámicas automáticas (p, f, cresc, dim)? (s/n) [s]: ")
+        .strip()
+        .lower()
+        or "s"
+    )
+    use_dynamics = use_dynamics_input == "s"
+
+    base_dynamic = "mf"
+    climax_dynamic = "f"
+    if use_dynamics:
+        print("\nDinámica base:")
+        print("1. pp (pianissimo)")
+        print("2. p (piano)")
+        print("3. mp (mezzo piano)")
+        print("4. mf (mezzo forte) [Recomendado]")
+        print("5. f (forte)")
+        dyn_choice = input("Seleccione [4]: ").strip() or "4"
+        dyn_map = {"1": "pp", "2": "p", "3": "mp", "4": "mf", "5": "f"}
+        base_dynamic = dyn_map.get(dyn_choice, "mf")
+
+        print("\nDinámica del clímax:")
+        print("1. mf (mezzo forte)")
+        print("2. f (forte) [Recomendado]")
+        print("3. ff (fortissimo)")
+        climax_choice = input("Seleccione [2]: ").strip() or "2"
+        climax_map = {"1": "mf", "2": "f", "3": "ff"}
+        climax_dynamic = climax_map.get(climax_choice, "f")
+
+    # Articulaciones
+    use_articulations_input = (
+        input("\n¿Añadir articulaciones (staccato, legato, acentos)? (s/n) [s]: ")
+        .strip()
+        .lower()
+        or "s"
+    )
+    use_articulations = use_articulations_input == "s"
+
+    return ExpressionConfig(
+        use_ornamentation=use_ornamentation,
+        ornamentation_style=orn_style,
+        use_dynamics=use_dynamics,
+        base_dynamic=base_dynamic,
+        climax_dynamic=climax_dynamic,
+        use_articulations=use_articulations,
+        articulation_style=orn_style if orn_style != "none" else "classical",
+    )
+
+
 def get_output_config() -> OutputConfig:
     """Obtiene la configuración de salida del usuario."""
     print("\n=== INFORMACIÓN DE LA PARTITURA ===")
@@ -332,6 +411,7 @@ def run_generation_loop(
     config: GenerationConfig,
     tolerance: float,
     use_hierarchical: bool,
+    expression_config: Optional[ExpressionConfig] = None,
 ) -> Tuple[Optional[abjad.Staff], Optional[ValidationReport]]:
     """
     Ejecuta el ciclo de generación con validación.
@@ -344,8 +424,9 @@ def run_generation_loop(
     print("=" * 70)
     print()
 
-    architect = MelodicArchitect(config=config)
+    architect = MelodicArchitect(config=config, expression_config=expression_config)
     current_config = config
+    current_expression = expression_config
 
     staff = None
     validation_report = None
@@ -358,6 +439,12 @@ def run_generation_loop(
         print(f"{'─' * 70}\n")
 
         # Generar melodía
+        has_expression = current_expression is not None and (
+            current_expression.use_dynamics or
+            current_expression.use_articulations or
+            current_expression.use_ornamentation
+        )
+
         if use_hierarchical:
             print("Generando con método JERÁRQUICO...")
             result = architect.generate_period_hierarchical()
@@ -365,6 +452,11 @@ def run_generation_loop(
         else:
             print("Generando con método TRADICIONAL...")
             staff = architect.generate_period()
+
+        # Aplicar características expresivas si están habilitadas
+        if has_expression:
+            print("Aplicando características expresivas...")
+            staff = architect.apply_expression(staff)
 
         # Validar melodía
         print("Validando melodía generada...\n")
@@ -439,7 +531,7 @@ def run_generation_loop(
                 markov_order=config.markov.order,
             )
 
-            architect = MelodicArchitect(config=current_config)
+            architect = MelodicArchitect(config=current_config, expression_config=current_expression)
             print("\n🔄 Regenerando con parámetros corregidos...")
 
         elif choice == "2":
@@ -520,6 +612,7 @@ def main():
         melody_config = get_melody_config()
         motif_config = get_motif_config()
         markov_config = get_markov_config()
+        expression_config = get_expression_config()
         use_hierarchical = get_generation_method()
         tolerance = get_validation_tolerance()
         output_config = get_output_config()
@@ -539,13 +632,14 @@ def main():
             config=config,
             tolerance=tolerance,
             use_hierarchical=use_hierarchical,
+            expression_config=expression_config,
         )
 
         if staff is None:
             return
 
         # Generar código LilyPond
-        architect = MelodicArchitect(config=config)
+        architect = MelodicArchitect(config=config, expression_config=expression_config)
         lilypond_code = architect.format_as_lilypond(
             staff,
             title=output_config.title,
