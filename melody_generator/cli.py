@@ -328,31 +328,36 @@ def get_generation_method() -> str:
     print("1. Tradicional (sistema actual, cohesión rítmica)")
     print("2. Jerárquico (Motivo → Frase → Semifrase → Período)")
     print("3. Genético (Evolución de motivos con DEAP)")
-    print("4. Con bajo armónico (NUEVO: Melodía + bajo en dos pentagramas)")
     generation_method_input = input("Seleccione método [1]: ").strip() or "1"
 
     method_map = {
         "1": "traditional",
         "2": "hierarchical",
         "3": "genetic",
-        "4": "with_bass",
     }
     return method_map.get(generation_method_input, "traditional")
 
 
-def get_bass_config() -> tuple:
+def get_bass_config() -> Optional[tuple]:
     """
-    Obtiene la configuración de bajo del usuario.
+    Pregunta si añadir bajo y obtiene la configuración.
 
     Returns:
-        Tupla (bass_style, bass_config)
+        Tupla (bass_style, bass_config) o None si no quiere bajo
     """
-    print("\n=== CONFIGURACIÓN DEL BAJO ARMÓNICO ===")
+    print("\n=== BAJO ARMÓNICO (Opcional) ===")
     print()
     print("El bajo proporciona fundamento armónico a la melodía,")
     print("creando una textura de dos voces (contrapunto básico).")
     print()
 
+    add_bass_input = (
+        input("¿Agregar línea de bajo? (s/n) [n]: ").strip().lower() or "n"
+    )
+    if add_bass_input != "s":
+        return None
+
+    print()
     print("Estilo de bajo:")
     print("1. Simple (una nota por compás - solemne, lento)")
     print("2. Alberti (arpegio: raíz-quinta-tercera-quinta - clásico)")
@@ -555,14 +560,14 @@ def run_generation_loop(
     Args:
         config: Configuración de generación
         tolerance: Tolerancia de validación
-        generation_method: "traditional", "hierarchical", "genetic", o "with_bass"
+        generation_method: "traditional", "hierarchical", o "genetic"
         expression_config: Configuración de expresión
         genetic_params: Parámetros genéticos si method="genetic"
-        bass_params: Parámetros de bajo si method="with_bass"
+        bass_params: Parámetros de bajo (opcional, se puede combinar con cualquier método)
 
     Returns:
         Tupla (staff, validation_report, lilypond_code) o (None, None, None) si se cancela
-        lilypond_code solo se devuelve si generation_method="with_bass"
+        lilypond_code se devuelve si hay bass_params
     """
     print("\n" + "=" * 70)
     print("Generando melodía con validación automática...")
@@ -591,6 +596,7 @@ def run_generation_loop(
             current_expression.use_ornamentation
         )
 
+        # Paso 1: Generar melodía con el método elegido
         if generation_method == "genetic":
             print("Generando con método GENÉTICO (evolucionando motivos)...")
             gen_params = genetic_params or {}
@@ -603,24 +609,24 @@ def run_generation_loop(
             print("Generando con método JERÁRQUICO...")
             result = architect.generate_period_hierarchical()
             staff = result[0] if isinstance(result, tuple) else result
-        elif generation_method == "with_bass":
-            print("Generando con BAJO ARMÓNICO (melodía + bajo)...")
-            bass_prms = bass_params or {}
+        else:
+            print("Generando con método TRADICIONAL...")
+            staff = architect.generate_period()
+
+        # Paso 2: Añadir bajo si está configurado
+        if bass_params is not None:
+            print("Añadiendo BAJO ARMÓNICO...")
+            bass_prms = bass_params
             bass_style = bass_prms.get("bass_style", BassStyle.SIMPLE)
             bass_cfg = bass_prms.get("bass_config", None)
 
-            # Generar melodía con bajo
+            # Generar melodía con bajo (usa la misma semilla armónica)
             lilypond_code = architect.generate_period_with_bass(
                 bass_style=bass_style,
                 bass_config=bass_cfg,
                 return_staffs=False,
             )
-            # También generar staff solo para validación
-            staff = architect.generate_period()
             print("  ✓ Bajo generado con verificación de conducción de voces")
-        else:
-            print("Generando con método TRADICIONAL...")
-            staff = architect.generate_period()
 
         # Aplicar características expresivas si están habilitadas
         if has_expression:
@@ -789,10 +795,11 @@ def main():
         if generation_method == "genetic":
             genetic_params = get_genetic_config()
 
-        # Obtener configuración de bajo si el método es con bajo
+        # Preguntar si añadir bajo (independiente del método)
         bass_params = None
-        if generation_method == "with_bass":
-            bass_style, bass_config = get_bass_config()
+        bass_result = get_bass_config()
+        if bass_result is not None:
+            bass_style, bass_config = bass_result
             bass_params = {
                 "bass_style": bass_style,
                 "bass_config": bass_config,

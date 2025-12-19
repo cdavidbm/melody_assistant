@@ -148,8 +148,82 @@
 
             <div class="form-row">
                 <div class="form-group checkbox-group">
-                    <input type="checkbox" name="use_hierarchical" id="use_hierarchical">
-                    <label for="use_hierarchical">Metodo jerarquico (Motivo - Frase - Periodo)</label>
+                    <input type="checkbox" name="use_tenoris" id="use_tenoris" {{ 'checked' if defaults.use_tenoris else '' }}>
+                    <label for="use_tenoris">Usar tenoris (quinta como nota sostenedora)</label>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Metodo de Generacion -->
+        <fieldset>
+            <legend>Metodo de Generacion</legend>
+
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="generation_method">Metodo</label>
+                    <select name="generation_method" id="generation_method">
+                        {% for value, label in generation_methods %}
+                        <option value="{{ value }}" {{ 'selected' if value == defaults.generation_method else '' }}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Genetic options (shown when genetic method selected) -->
+            <div class="genetic-options" id="genetic-options" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="genetic_generations">Generaciones</label>
+                        <input type="number" name="genetic_generations" id="genetic_generations"
+                               min="5" max="100" value="{{ defaults.genetic_generations }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="genetic_population">Poblacion</label>
+                        <input type="number" name="genetic_population" id="genetic_population"
+                               min="10" max="200" value="{{ defaults.genetic_population }}">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group checkbox-group">
+                        <input type="checkbox" name="genetic_markov_polish" id="genetic_markov_polish" {{ 'checked' if defaults.genetic_markov_polish else '' }}>
+                        <label for="genetic_markov_polish">Pulido Markov (suaviza voice leading)</label>
+                    </div>
+                </div>
+            </div>
+        </fieldset>
+
+        <!-- Bajo Armonico (Opcional) -->
+        <fieldset>
+            <legend>Bajo Armonico (Opcional)</legend>
+
+            <div class="form-row">
+                <div class="form-group checkbox-group">
+                    <input type="checkbox" name="add_bass" id="add_bass" {{ 'checked' if defaults.add_bass else '' }}>
+                    <label for="add_bass">Agregar linea de bajo</label>
+                </div>
+            </div>
+
+            <div class="bass-options" id="bass-options" style="display: none;">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="bass_style">Estilo de bajo</label>
+                        <select name="bass_style" id="bass_style">
+                            {% for value, label in bass_styles %}
+                            <option value="{{ value }}" {{ 'selected' if value == defaults.bass_style else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="bass_octave">Octava del bajo</label>
+                        <select name="bass_octave" id="bass_octave">
+                            <option value="2" {{ 'selected' if defaults.bass_octave == 2 else '' }}>2 (muy grave)</option>
+                            <option value="3" {{ 'selected' if defaults.bass_octave == 3 else '' }}>3 (grave - recomendado)</option>
+                            <option value="4" {{ 'selected' if defaults.bass_octave == 4 else '' }}>4 (media)</option>
+                        </select>
+                    </div>
                 </div>
             </div>
         </fieldset>
@@ -182,6 +256,17 @@
                                min="0" max="1" step="0.1" value="{{ defaults.markov_weight }}"
                                oninput="this.nextElementSibling.value = this.value">
                         <output>{{ defaults.markov_weight }}</output>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="markov_order">Orden de la cadena (contexto previo)</label>
+                        <select name="markov_order" id="markov_order">
+                            {% for value, label in markov_orders %}
+                            <option value="{{ value }}" {{ 'selected' if value == defaults.markov_order else '' }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
                     </div>
                 </div>
             </div>
@@ -242,9 +327,14 @@
             <legend>Informacion de Partitura</legend>
 
             <div class="form-row">
-                <div class="form-group full-width">
+                <div class="form-group">
                     <label for="title">Titulo</label>
                     <input type="text" name="title" id="title" value="{{ defaults.title }}" placeholder="Melodia Generada">
+                </div>
+
+                <div class="form-group">
+                    <label for="score_composer">Compositor</label>
+                    <input type="text" name="score_composer" id="score_composer" value="{{ defaults.score_composer }}" placeholder="MelodicArchitect AI">
                 </div>
             </div>
         </fieldset>
@@ -273,10 +363,25 @@
         document.getElementById('dynamics-options').style.display = this.checked ? 'block' : 'none';
     });
 
+    // Toggle bass options visibility
+    document.getElementById('add_bass').addEventListener('change', function() {
+        document.getElementById('bass-options').style.display = this.checked ? 'block' : 'none';
+    });
+
+    // Toggle generation method options (genetic only now)
+    function updateGenerationMethodOptions() {
+        var method = document.getElementById('generation_method').value;
+        document.getElementById('genetic-options').style.display = (method === 'genetic') ? 'block' : 'none';
+    }
+    document.getElementById('generation_method').addEventListener('change', updateGenerationMethodOptions);
+
     // Initialize visibility
     document.getElementById('markov-options').style.display =
         document.getElementById('use_markov').checked ? 'block' : 'none';
     document.getElementById('dynamics-options').style.display =
         document.getElementById('use_dynamics').checked ? 'block' : 'none';
+    document.getElementById('bass-options').style.display =
+        document.getElementById('add_bass').checked ? 'block' : 'none';
+    updateGenerationMethodOptions();
 </script>
 {% endblock %}

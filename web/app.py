@@ -26,6 +26,7 @@ from melody_generator.config import (
 from melody_generator.models import ImpulseType
 from melody_generator.cli import MODE_MAP, COMPOSER_MAP
 from melody_generator.ornamentation import OrnamentStyle
+from melody_generator.bass import BassStyle, BassConfig
 
 app = Flask(__name__)
 
@@ -65,6 +66,21 @@ DYNAMIC_LEVELS = [
     ("f", "Forte (f)"),
     ("ff", "Fortissimo (ff)"),
 ]
+GENERATION_METHODS = [
+    ("traditional", "Tradicional (cohesion ritmica)"),
+    ("hierarchical", "Jerarquico (Motivo - Frase - Periodo)"),
+    ("genetic", "Genetico (Evolucion de motivos con DEAP)"),
+]
+BASS_STYLES = [
+    ("simple", "Simple (una nota por compas)"),
+    ("alberti", "Alberti (arpegio clasico)"),
+    ("walking", "Walking (movimiento diatonico)"),
+]
+MARKOV_ORDERS = [
+    (1, "1 (menos contexto)"),
+    (2, "2 (recomendado)"),
+    (3, "3 (maximo contexto)"),
+]
 
 
 def get_random_defaults():
@@ -78,11 +94,23 @@ def get_random_defaults():
         "complexity": random.choice([1, 2]),
         "impulse": random.choice(["tetic", "anacroustic"]),
         "use_rests": random.choice([True, False]),
+        "use_tenoris": False,
         "use_markov": False,
         "composer": "bach",
         "markov_weight": 0.3,
+        "markov_order": 2,
         "climax_position": round(random.uniform(0.6, 0.8), 2),
         "variation_freedom": random.choice([1, 2, 3]),
+        # Generation method
+        "generation_method": "traditional",
+        # Genetic options
+        "genetic_generations": 15,
+        "genetic_population": 30,
+        "genetic_markov_polish": True,
+        # Bass options (independent)
+        "add_bass": False,
+        "bass_style": "simple",
+        "bass_octave": 3,
         # Expression options
         "ornamentation_style": "none",
         "use_dynamics": True,
@@ -98,6 +126,7 @@ def get_random_defaults():
             "Elegía",
             "Impromptu",
         ]),
+        "score_composer": "MelodicArchitect AI",
     }
 
 
@@ -117,6 +146,9 @@ def index():
         composers=COMPOSERS,
         ornamentation_styles=ORNAMENTATION_STYLES,
         dynamic_levels=DYNAMIC_LEVELS,
+        generation_methods=GENERATION_METHODS,
+        bass_styles=BASS_STYLES,
+        markov_orders=MARKOV_ORDERS,
     )
 
 
@@ -133,13 +165,26 @@ def generate():
         complexity = int(request.form.get("complexity", 2))
         impulse_str = request.form.get("impulse", "tetic")
         use_rests = request.form.get("use_rests") == "on"
+        use_tenoris = request.form.get("use_tenoris") == "on"
         use_markov = request.form.get("use_markov") == "on"
         composer = request.form.get("composer", "bach")
         markov_weight = float(request.form.get("markov_weight", 0.5))
+        markov_order = int(request.form.get("markov_order", 2))
         climax_position = float(request.form.get("climax_position", 0.75))
         variation_freedom = int(request.form.get("variation_freedom", 2))
         title = request.form.get("title", "Melodía Generada")
-        use_hierarchical = request.form.get("use_hierarchical") == "on"
+        score_composer = request.form.get("score_composer", "MelodicArchitect AI")
+        generation_method = request.form.get("generation_method", "traditional")
+
+        # Parse genetic options
+        genetic_generations = int(request.form.get("genetic_generations", 15))
+        genetic_population = int(request.form.get("genetic_population", 30))
+        genetic_markov_polish = request.form.get("genetic_markov_polish") == "on"
+
+        # Parse bass options (independent checkbox)
+        add_bass = request.form.get("add_bass") == "on"
+        bass_style_str = request.form.get("bass_style", "simple")
+        bass_octave = int(request.form.get("bass_octave", 3))
 
         # Parse expression options
         ornamentation_style = request.form.get("ornamentation_style", "none")
@@ -155,6 +200,14 @@ def generate():
             "acephalous": ImpulseType.ACEPHALOUS,
         }
         impulse_type = impulse_map.get(impulse_str, ImpulseType.TETIC)
+
+        # Map bass style
+        bass_style_map = {
+            "simple": BassStyle.SIMPLE,
+            "alberti": BassStyle.ALBERTI,
+            "walking": BassStyle.WALKING,
+        }
+        bass_style = bass_style_map.get(bass_style_str, BassStyle.SIMPLE)
 
         # Create configuration
         config = GenerationConfig(
@@ -174,6 +227,8 @@ def generate():
                 climax_intensity=1.5,
                 max_interval=6,
                 infraction_rate=0.1,
+                use_tenoris=use_tenoris,
+                tenoris_probability=0.2,
             ),
             motif=MotifConfig(
                 use_motivic_variations=True,
@@ -184,7 +239,7 @@ def generate():
                 enabled=use_markov,
                 composer=composer,
                 weight=markov_weight,
-                order=2,
+                order=markov_order,
             ),
         )
 
@@ -200,23 +255,55 @@ def generate():
 
         # Generate melody
         architect = MelodicArchitect(config=config, expression_config=expression_config)
+        lilypond_code = None
 
-        if use_hierarchical:
+        # Step 1: Generate melody with chosen method
+        if generation_method == "genetic":
+            staff = architect.generate_period_genetic(
+                generations=genetic_generations,
+                population_size=genetic_population,
+                use_markov_polish=genetic_markov_polish,
+            )
+        elif generation_method == "hierarchical":
             result = architect.generate_period_hierarchical()
             staff = result[0] if isinstance(result, tuple) else result
-        else:
+        else:  # traditional
             staff = architect.generate_period()
+
+        # Step 2: Add bass if requested (can combine with any method)
+        if add_bass:
+            bass_config = BassConfig(
+                style=bass_style,
+                octave=bass_octave,
+            )
+            lilypond_code = architect.generate_period_with_bass(
+                bass_style=bass_style,
+                bass_config=bass_config,
+                return_staffs=False,
+            )
 
         # Apply expression if any expression option is enabled
         if expression_config.use_ornamentation or expression_config.use_dynamics or expression_config.use_articulations:
             staff = architect.apply_expression(staff)
 
-        # Format as LilyPond
-        lilypond_code = architect.format_as_lilypond(
-            staff,
-            title=title,
-            composer="MelodicArchitect AI",
-        )
+        # Format as LilyPond (if not already generated with bass)
+        if lilypond_code is None:
+            lilypond_code = architect.format_as_lilypond(
+                staff,
+                title=title,
+                composer=score_composer,
+            )
+        else:
+            # Add header to bass lilypond code
+            header_code = ""
+            if title or score_composer:
+                header_code = "\\header {\n"
+                if title:
+                    header_code += f'  title = "{title}"\n'
+                if score_composer:
+                    header_code += f'  composer = "{score_composer}"\n'
+                header_code += "}\n\n"
+            lilypond_code = header_code + lilypond_code
 
         # Save files
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
