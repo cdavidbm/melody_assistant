@@ -1114,6 +1114,632 @@ class MelodicArchitect:
 
         return staff, lilypond_code
 
+    def develop_user_motif_v2(
+        self,
+        original_lilypond: str,
+        music21_stream,  # music21.stream.Stream from validation
+        num_measures: int = 8,
+        variation_freedom: int = 2,
+        add_bass: bool = False,
+        title: str = "Desarrollo de Idea",
+        composer: str = "CompositorIA",
+    ) -> Tuple[abjad.Staff, str]:
+        """
+        Desarrolla un motivo preservando el LilyPond original LITERALMENTE.
+
+        Esta versión V2 soluciona el bug crítico donde el motivo del usuario
+        era ignorado. Ahora:
+        1. El LilyPond original se preserva exactamente como el usuario lo escribió
+        2. El stream music21 se usa SOLO para análisis (intervalos, contorno, ritmo)
+        3. Solo se genera material de DESARROLLO para los compases restantes
+        4. Output = LilyPond original + desarrollo generado
+
+        Args:
+            original_lilypond: Notación LilyPond EXACTA del usuario (se preserva literal)
+            music21_stream: Stream de music21 del motivo (para análisis, no modificación)
+            num_measures: Número total de compases a generar
+            variation_freedom: 1=conservador, 2=moderado, 3=creativo
+            add_bass: Si True, agrega línea de bajo
+            title: Título para la partitura
+            composer: Nombre del compositor
+
+        Returns:
+            Tuple[Staff, str]: Staff con la melodía y código LilyPond completo
+        """
+        import copy
+        import random
+        from music21 import note as m21note, pitch as m21pitch
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PASO 1: Analizar el motivo con music21 (SIN MODIFICAR)
+        # ═══════════════════════════════════════════════════════════════════
+
+        # Extraer información del motivo para desarrollo
+        motif_notes = []
+        motif_intervals = []
+        motif_rhythms = []
+        last_pitch = None
+
+        for element in music21_stream.flatten().notesAndRests:
+            if isinstance(element, m21note.Note):
+                motif_notes.append({
+                    'pitch': element.pitch.midi,
+                    'duration': element.quarterLength,
+                    'pitch_name': element.pitch.nameWithOctave,
+                })
+                motif_rhythms.append(element.quarterLength)
+
+                if last_pitch is not None:
+                    interval = element.pitch.midi - last_pitch
+                    motif_intervals.append(interval)
+                last_pitch = element.pitch.midi
+
+            elif isinstance(element, m21note.Rest):
+                motif_rhythms.append(element.quarterLength)
+
+        # Calcular duración total del motivo en beats
+        motif_total_beats = sum(motif_rhythms)
+
+        # Calcular cuántos compases ocupa el motivo
+        meter_num, meter_den = self.meter_tuple
+        beats_per_measure = meter_num * (4 / meter_den)
+        motif_measures = motif_total_beats / beats_per_measure
+
+        # Calcular compases de desarrollo necesarios
+        development_measures = max(0, num_measures - motif_measures)
+        development_beats = development_measures * beats_per_measure
+
+        if development_beats <= 0:
+            # El motivo ya llena todo, no hay desarrollo
+            # Solo formateamos el original
+            return self._format_original_only(
+                original_lilypond, title, composer, add_bass, num_measures
+            )
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PASO 2: Extraer características para desarrollo
+        # ═══════════════════════════════════════════════════════════════════
+
+        # Rango melódico del motivo
+        if motif_notes:
+            pitches = [n['pitch'] for n in motif_notes]
+            motif_min_pitch = min(pitches)
+            motif_max_pitch = max(pitches)
+            motif_center = (motif_min_pitch + motif_max_pitch) // 2
+            last_motif_pitch = pitches[-1]
+            first_motif_pitch = pitches[0]
+        else:
+            motif_center = 60  # C4
+            last_motif_pitch = 60
+            first_motif_pitch = 60
+            motif_min_pitch = 55
+            motif_max_pitch = 72
+
+        # Intervalos característicos
+        characteristic_intervals = list(set(motif_intervals)) if motif_intervals else [0, 2, -2]
+
+        # Ritmos característicos
+        characteristic_rhythms = list(set(motif_rhythms)) if motif_rhythms else [1.0]
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PASO 3: Generar material de DESARROLLO usando la escala
+        # ═══════════════════════════════════════════════════════════════════
+
+        development_notes = []
+        current_beat = 0
+
+        # Obtener grados de escala válidos desde el motivo
+        # Convertir pitches del motivo a grados de escala
+        motif_degrees = []
+        for note_info in motif_notes:
+            midi = note_info['pitch']
+            degree = self.scale_manager.pitch_to_degree(midi)
+            if degree is not None:
+                motif_degrees.append(degree)
+
+        # Si no hay grados detectados, usar 1-5-3-1 como patrón básico
+        if not motif_degrees:
+            motif_degrees = [1, 5, 3, 1]
+
+        # Calcular el grado inicial (último del motivo) y octava
+        last_midi = last_motif_pitch
+        current_degree = self.scale_manager.pitch_to_degree(last_midi)
+        if current_degree is None:
+            current_degree = 1
+
+        # Determinar octava base (MIDI 60 = C4 = octava 4)
+        current_octave = last_midi // 12 - 1
+
+        # Filtrar ritmos para usar solo valores razonables (no 16avos sueltos)
+        filtered_rhythms = [r for r in characteristic_rhythms if r >= 0.5]  # mínimo corchea
+        if not filtered_rhythms:
+            filtered_rhythms = [1.0, 0.5]  # negra y corchea por defecto
+
+        # Tipos de desarrollo basados en libertad
+        if variation_freedom == 1:
+            # Conservador: repetir grados del motivo, ritmos similares
+            dev_patterns = ['echo', 'sequence_up', 'sequence_down']
+        elif variation_freedom == 2:
+            # Moderado: secuencias, inversiones
+            dev_patterns = ['echo', 'sequence_up', 'sequence_down', 'inversion', 'neighbor']
+        else:
+            # Creativo: más variedad
+            dev_patterns = ['echo', 'sequence_up', 'sequence_down', 'inversion',
+                          'neighbor', 'leap', 'pedal']
+
+        phrase_position = 0
+        notes_in_phrase = 0
+        phrase_pattern = random.choice(dev_patterns)
+
+        while current_beat < development_beats:
+            # Cambiar patrón cada 4-8 notas
+            if notes_in_phrase >= random.randint(4, 8):
+                phrase_pattern = random.choice(dev_patterns)
+                notes_in_phrase = 0
+
+            # Elegir duración de los ritmos característicos
+            duration = random.choice(filtered_rhythms)
+            if current_beat + duration > development_beats:
+                duration = development_beats - current_beat
+                if duration < 0.5:
+                    break
+
+            # Elegir siguiente grado basado en el patrón
+            if phrase_pattern == 'echo':
+                # Eco: repetir grados del motivo
+                idx = phrase_position % len(motif_degrees)
+                target_degree = motif_degrees[idx]
+
+            elif phrase_pattern == 'sequence_up':
+                # Secuencia ascendente: transponer motivo +2 grados
+                idx = phrase_position % len(motif_degrees)
+                target_degree = motif_degrees[idx] + 2
+                if target_degree > 7:
+                    target_degree -= 7
+
+            elif phrase_pattern == 'sequence_down':
+                # Secuencia descendente: transponer motivo -2 grados
+                idx = phrase_position % len(motif_degrees)
+                target_degree = motif_degrees[idx] - 2
+                if target_degree < 1:
+                    target_degree += 7
+
+            elif phrase_pattern == 'inversion':
+                # Inversión: espejo alrededor del grado 4
+                idx = phrase_position % len(motif_degrees)
+                original = motif_degrees[idx]
+                target_degree = 8 - original  # Inversión simple
+                if target_degree < 1:
+                    target_degree = 1
+                if target_degree > 7:
+                    target_degree = 7
+
+            elif phrase_pattern == 'neighbor':
+                # Notas vecinas: grado actual +-1
+                step = random.choice([-1, 1])
+                target_degree = current_degree + step
+                if target_degree < 1:
+                    target_degree = 2
+                if target_degree > 7:
+                    target_degree = 6
+
+            elif phrase_pattern == 'leap':
+                # Salto: ir a grados estructurales (1, 3, 5)
+                target_degree = random.choice([1, 3, 5])
+
+            elif phrase_pattern == 'pedal':
+                # Pedal: alternar entre tónica y otro grado
+                if phrase_position % 2 == 0:
+                    target_degree = 1
+                else:
+                    target_degree = random.choice([3, 5])
+
+            else:
+                target_degree = current_degree
+
+            # Convertir grado a pitch usando scale_manager
+            pitch_name = self.scale_manager.get_pitch_by_degree(target_degree, current_octave)
+
+            # Convertir pitch name (e.g., "eb4", "ab4") a formato LilyPond (e.g., "es'", "aes'")
+            lily_pitch = self._pitch_name_to_lilypond(pitch_name)
+
+            # Verificar rango usando music21 para obtener MIDI
+            from music21 import pitch as m21pitch
+            try:
+                m21_pitch = m21pitch.Pitch(pitch_name)
+                target_midi = m21_pitch.midi
+
+                # Ajustar octava si está fuera del rango
+                while target_midi > motif_max_pitch + 5:
+                    target_midi -= 12
+                    current_octave -= 1
+                    pitch_name = self.scale_manager.get_pitch_by_degree(target_degree, current_octave)
+                    lily_pitch = self._pitch_name_to_lilypond(pitch_name)
+                while target_midi < motif_min_pitch - 5:
+                    target_midi += 12
+                    current_octave += 1
+                    pitch_name = self.scale_manager.get_pitch_by_degree(target_degree, current_octave)
+                    lily_pitch = self._pitch_name_to_lilypond(pitch_name)
+            except Exception:
+                pass  # Keep the original pitch_name
+
+            # Crear nota Abjad
+            try:
+                dur_str = self._duration_to_lilypond(duration)
+                note = abjad.Note(f"{lily_pitch}{dur_str}")
+                development_notes.append(note)
+            except Exception:
+                note = abjad.Note("c'4")
+                development_notes.append(note)
+                duration = 1.0
+
+            current_degree = target_degree
+            current_beat += duration
+            phrase_position += 1
+            notes_in_phrase += 1
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PASO 4: Crear Staff de desarrollo para formateo
+        # ═══════════════════════════════════════════════════════════════════
+
+        development_staff = abjad.Staff(development_notes)
+
+        # ═══════════════════════════════════════════════════════════════════
+        # PASO 5: Formatear LilyPond final = Original + Desarrollo
+        # ═══════════════════════════════════════════════════════════════════
+
+        lilypond_code = self._format_motif_with_development(
+            original_lilypond=original_lilypond,
+            development_staff=development_staff,
+            title=title,
+            composer=composer,
+            add_bass=add_bass,
+            num_measures=num_measures,
+        )
+
+        # Para el Staff de retorno, parseamos todo combinado
+        # Pero el LilyPond es lo importante (preserva el original)
+        combined_notes = []
+
+        # Parsear original para el staff (solo para retorno)
+        parsed_original = self._parse_lilypond_motif(original_lilypond)
+        for note_data in parsed_original:
+            try:
+                note = abjad.Note(f"{note_data['pitch']}{note_data['duration']}")
+                combined_notes.append(note)
+            except Exception:
+                continue
+
+        # Agregar desarrollo - crear nuevas notas para evitar problema de parent
+        for leaf in abjad.iterate.leaves(development_staff):
+            if isinstance(leaf, abjad.Note):
+                # Create a fresh note with same pitch and duration
+                pitch = leaf.written_pitch
+                duration = abjad.get.duration(leaf)
+                pitch_name = pitch.name if hasattr(pitch, 'name') else str(pitch)
+                if callable(pitch_name):
+                    pitch_name = pitch_name()
+                dur_str = self._duration_to_lilypond(float(duration) * 4)
+                try:
+                    new_note = abjad.Note(f"{pitch_name}{dur_str}")
+                    combined_notes.append(new_note)
+                except Exception:
+                    combined_notes.append(abjad.Note("c'4"))
+            elif isinstance(leaf, abjad.Rest):
+                duration = abjad.get.duration(leaf)
+                dur_str = self._duration_to_lilypond(float(duration) * 4)
+                combined_notes.append(abjad.Rest(f"r{dur_str}"))
+
+        combined_staff = abjad.Staff(combined_notes) if combined_notes else abjad.Staff([abjad.Note("c'4")])
+
+        # Agregar firmas
+        if combined_notes:
+            time_sig = abjad.TimeSignature(self.meter_tuple)
+            abjad.attach(time_sig, combined_staff[0])
+
+            key_sig = self._create_key_signature()
+            if key_sig:
+                abjad.attach(key_sig, combined_staff[0])
+
+        return combined_staff, lilypond_code
+
+    def _pitch_name_to_lilypond(self, pitch_name: str) -> str:
+        """
+        Convierte nombre de pitch (e.g., "eb4", "ab5", "c4") a formato LilyPond/Abjad.
+
+        Args:
+            pitch_name: Nombre como "eb4", "c#5", "g3"
+
+        Returns:
+            Nombre LilyPond como "es'", "cis''", "g"
+        """
+        import re
+
+        # Separar nombre de nota y octava
+        match = re.match(r'([a-gA-G])([#b]*)(\d+)', pitch_name)
+        if not match:
+            return "c'"  # Default
+
+        note = match.group(1).lower()
+        accidental = match.group(2)
+        octave = int(match.group(3))
+
+        # Convertir accidental a formato Abjad/LilyPond
+        # Abjad uses: es (Eb), as (Ab), bes (Bb), des (Db), ges (Gb)
+        # NOTE: Only E and A can use shortened 's' form for flats
+        # B-flat is 'bes' NOT 'bs' (which would be B-sharp)
+        lily_accidental = ""
+        if accidental:
+            if "#" in accidental:
+                lily_accidental = "s" * accidental.count("#")  # Sharp suffix
+            elif "b" in accidental:
+                # Only E and A use shortened 's' for flats (es, as)
+                # All others including B use 'es' (bes, des, ges, etc.)
+                if note in ['e', 'a']:
+                    lily_accidental = "s" * accidental.count("b")
+                else:
+                    lily_accidental = "es" * accidental.count("b")
+
+        # Calcular marcas de octava (c' = C4)
+        lily_octave = octave - 3
+        if lily_octave > 0:
+            octave_marks = "'" * lily_octave
+        elif lily_octave < 0:
+            octave_marks = "," * abs(lily_octave)
+        else:
+            octave_marks = ""
+
+        return f"{note}{lily_accidental}{octave_marks}"
+
+    def _midi_to_lilypond_pitch(self, midi_number: int, use_english: bool = True) -> str:
+        """
+        Convierte número MIDI a nombre de nota LilyPond.
+
+        Args:
+            midi_number: Número MIDI (60 = C4)
+            use_english: Si True, usa notación inglesa (cs, ds) compatible con Abjad.
+                         Si False, usa notación holandesa (cis, dis) estándar LilyPond.
+
+        Returns:
+            Nombre de nota LilyPond (e.g., "c'", "g''", "d,")
+        """
+        if use_english:
+            # English notation for Abjad compatibility
+            pitch_names = ['c', 'cs', 'd', 'ds', 'e', 'f', 'fs', 'g', 'gs', 'a', 'as', 'b']
+        else:
+            # Dutch/German notation for standard LilyPond
+            pitch_names = ['c', 'cis', 'd', 'dis', 'e', 'f', 'fis', 'g', 'gis', 'a', 'ais', 'b']
+
+        pc = midi_number % 12
+        octave = midi_number // 12 - 1  # MIDI octave convention
+
+        name = pitch_names[pc]
+
+        # LilyPond octave: c' = C4 (MIDI 60), c = C3 (MIDI 48)
+        lily_octave = octave - 3  # c' is octave 4
+        if lily_octave > 0:
+            octave_marks = "'" * lily_octave
+        elif lily_octave < 0:
+            octave_marks = "," * abs(lily_octave)
+        else:
+            octave_marks = ""
+
+        return f"{name}{octave_marks}"
+
+    def _duration_to_lilypond(self, quarter_length: float) -> str:
+        """Convierte quarterLength de music21 a notación LilyPond."""
+        # Mapeo de duraciones comunes
+        dur_map = {
+            4.0: "1",      # whole
+            3.0: "2.",     # dotted half
+            2.0: "2",      # half
+            1.5: "4.",     # dotted quarter
+            1.0: "4",      # quarter
+            0.75: "8.",    # dotted eighth
+            0.5: "8",      # eighth
+            0.375: "16.",  # dotted sixteenth
+            0.25: "16",    # sixteenth
+            0.125: "32",   # thirty-second
+        }
+
+        if quarter_length in dur_map:
+            return dur_map[quarter_length]
+
+        # Aproximar a la más cercana
+        closest = min(dur_map.keys(), key=lambda x: abs(x - quarter_length))
+        return dur_map[closest]
+
+    def _format_original_only(
+        self,
+        original_lilypond: str,
+        title: str,
+        composer: str,
+        add_bass: bool,
+        num_measures: int,
+    ) -> Tuple[abjad.Staff, str]:
+        """Formatea solo el motivo original cuando no hay desarrollo."""
+        import re
+
+        # Limpiar el LilyPond original de comandos de encabezado
+        clean_ly = original_lilypond.strip()
+
+        # Extraer solo el contenido musical (dentro de llaves si existe)
+        brace_match = re.search(r'\{([^}]+)\}', clean_ly)
+        if brace_match:
+            music_content = brace_match.group(1).strip()
+        else:
+            music_content = clean_ly
+
+        # Construir LilyPond completo
+        header = ""
+        if title or composer:
+            header = "\\header {\n"
+            if title:
+                header += f'  title = "{title}"\n'
+            if composer:
+                header += f'  composer = "{composer}"\n'
+            header += "}\n\n"
+
+        # Use LilyPondFormatter's mode mapping to get valid LilyPond mode
+        mode_command = self.lilypond_formatter._get_lilypond_mode_command()
+        key_str = f"\\key {self.key_name.lower()} {mode_command}"
+        time_str = f"\\time {self.meter_tuple[0]}/{self.meter_tuple[1]}"
+
+        lilypond_code = f"""\\version "2.24.0"
+
+{header}\\relative c' {{
+  {time_str}
+  {key_str}
+  {music_content}
+  \\bar "|."
+}}
+"""
+
+        # Crear staff para retorno
+        parsed = self._parse_lilypond_motif(original_lilypond)
+        notes = []
+        for note_data in parsed:
+            try:
+                note = abjad.Note(f"{note_data['pitch']}{note_data['duration']}")
+                notes.append(note)
+            except Exception:
+                continue
+
+        staff = abjad.Staff(notes) if notes else abjad.Staff([abjad.Note("c'4")])
+
+        return staff, lilypond_code
+
+    def _format_motif_with_development(
+        self,
+        original_lilypond: str,
+        development_staff: abjad.Staff,
+        title: str,
+        composer: str,
+        add_bass: bool,
+        num_measures: int,
+    ) -> str:
+        """
+        Formatea el LilyPond final combinando original + desarrollo.
+
+        CRÍTICO: El original_lilypond se preserva EXACTAMENTE como el usuario
+        lo escribió, incluyendo articulaciones, dinámicas, ligaduras, etc.
+        """
+        import re
+
+        # ═══════════════════════════════════════════════════════════════════
+        # EXTRAER CONTENIDO MUSICAL DEL ORIGINAL
+        # ═══════════════════════════════════════════════════════════════════
+
+        clean_ly = original_lilypond.strip()
+
+        # Buscar contenido dentro de llaves
+        brace_match = re.search(r'\{([^}]+)\}', clean_ly, re.DOTALL)
+        if brace_match:
+            original_content = brace_match.group(1).strip()
+        else:
+            original_content = clean_ly
+
+        # Remover comandos de encabezado del contenido pero PRESERVAR todo lo demás
+        # Solo removemos \time, \key, \clef del contenido (se agregan en el wrapper)
+        # PERO preservamos articulaciones, dinámicas, ligaduras, etc.
+
+        # Extraer y remover \time
+        time_match = re.search(r'\\time\s+(\d+)/(\d+)', original_content)
+        if time_match:
+            # Usar el time signature del original si existe
+            pass  # Ya tenemos self.meter_tuple
+
+        # Remover solo los comandos de setup, preservando todo lo musical
+        setup_commands = [
+            r'\\time\s+\d+/\d+',
+            r'\\key\s+[a-g](?:is|es)?\s*\\(?:major|minor|dorian|phrygian|lydian|mixolydian|locrian)',
+            r'\\clef\s+(?:"[^"]*"|[a-z]+)',
+            r'\\set\s+\w+\s*=\s*#[^\s]+',
+        ]
+
+        music_content = original_content
+        for pattern in setup_commands:
+            music_content = re.sub(pattern, '', music_content, flags=re.IGNORECASE)
+
+        # Limpiar espacios extra pero preservar estructura
+        music_content = re.sub(r'\n\s*\n', '\n', music_content)
+        music_content = music_content.strip()
+
+        # Remover \bar "|." final si existe (lo agregamos al final del desarrollo)
+        music_content = re.sub(r'\\bar\s*"\|\."\s*$', '', music_content)
+        music_content = music_content.strip()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # FORMATEAR DESARROLLO
+        # ═══════════════════════════════════════════════════════════════════
+
+        development_notes_str = ""
+        for leaf in abjad.iterate.leaves(development_staff):
+            if isinstance(leaf, abjad.Note):
+                # Use abjad.get.duration() for reliable duration extraction
+                duration = abjad.get.duration(leaf)
+
+                # Get pitch name directly from Abjad (preserves enharmonic spelling)
+                # abjad.lilypond(leaf) gives us the full note with duration
+                lily_full = abjad.lilypond(leaf)
+                # Extract just the pitch part (before duration number)
+                import re
+                pitch_match = re.match(r"([a-g][fisesc]*[',-]*)", lily_full)
+                if pitch_match:
+                    pitch_name = pitch_match.group(1)
+                else:
+                    pitch_name = "c'"
+
+                # Convertir duración (abjad.Duration to quarterLength)
+                dur_str = self._duration_to_lilypond(float(duration) * 4)
+
+                development_notes_str += f"{pitch_name}{dur_str} "
+
+            elif isinstance(leaf, abjad.Rest):
+                duration = abjad.get.duration(leaf)
+                dur_str = self._duration_to_lilypond(float(duration) * 4)
+                development_notes_str += f"r{dur_str} "
+
+        development_notes_str = development_notes_str.strip()
+
+        # ═══════════════════════════════════════════════════════════════════
+        # CONSTRUIR LILYPOND FINAL
+        # ═══════════════════════════════════════════════════════════════════
+
+        header = ""
+        if title or composer:
+            header = "\\header {\n"
+            if title:
+                header += f'  title = "{title}"\n'
+            if composer:
+                header += f'  composer = "{composer}"\n'
+            header += "}\n\n"
+
+        # Use LilyPondFormatter's mode mapping to get valid LilyPond mode
+        mode_command = self.lilypond_formatter._get_lilypond_mode_command()
+        key_str = f"\\key {self.key_name.lower()} {mode_command}"
+        time_str = f"\\time {self.meter_tuple[0]}/{self.meter_tuple[1]}"
+
+        # Combinar: setup + original (con articulaciones) + desarrollo + barra final
+        lilypond_code = f"""\\version "2.24.0"
+
+{header}\\relative c' {{
+  {time_str}
+  {key_str}
+  \\clef "treble"
+
+  % === MOTIVO ORIGINAL (preservado literalmente) ===
+  {music_content}
+
+  % === DESARROLLO ===
+  {development_notes_str}
+
+  \\bar "|."
+}}
+"""
+
+        return lilypond_code
+
     def _parse_lilypond_motif(self, lilypond_str: str) -> List[dict]:
         """
         Parsea una cadena de notación LilyPond a una lista de notas.

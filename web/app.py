@@ -244,12 +244,25 @@ def generate_from_input(gen_input: GenerationInput) -> dict:
 
     # Check if this is musical_idea mode (user provided notes to develop)
     if gen_input.input_type == "musical_idea" and gen_input.user_motif:
-        # Use develop_user_motif method
-        staff, lilypond_code = architect.develop_user_motif(
-            user_motif=gen_input.user_motif,
+        # Validate motif to get music21 stream for analysis
+        validation_result = validate_motif_for_development(
+            fragment=gen_input.user_motif,
+            key_name=gen_input.key,
+            mode=gen_input.mode,
+            meter_num=gen_input.meter_num,
+            meter_den=gen_input.meter_den,
+        )
+
+        if not validation_result.is_valid:
+            raise ValueError(f"Error al validar motivo: {validation_result.error_message}")
+
+        # Use develop_user_motif_v2 - preserves original LilyPond LITERALLY
+        # The music21_stream is used ONLY for analysis, not modification
+        staff, lilypond_code = architect.develop_user_motif_v2(
+            original_lilypond=gen_input.user_motif,  # Preserved literally
+            music21_stream=validation_result.music21_stream,  # For analysis only
             num_measures=gen_input.num_measures,
             variation_freedom=gen_input.variation_freedom,
-            detect_key=False,  # Key is now required
             add_bass=gen_input.add_bass,
             title=gen_input.title,
             composer=gen_input.composer,
