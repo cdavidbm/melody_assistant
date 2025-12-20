@@ -1,0 +1,496 @@
+{% extends "base.html" %}
+
+{% block title %}Documentacion - CompositorIA{% endblock %}
+
+{% block content %}
+<div class="docs-container">
+    <div class="docs-sidebar">
+        <nav class="docs-nav">
+            <h3>Contenidos</h3>
+            <ul>
+                <li><a href="#jerarquia">Jerarquia Estructural</a></li>
+                <li><a href="#grados">Sistema de Grados</a></li>
+                <li><a href="#notas">Notas Estructurales vs Ornamentales</a></li>
+                <li><a href="#intervalos">Intervalos Melodicos</a></li>
+                <li><a href="#conduccion">Conduccion de Voces</a></li>
+                <li><a href="#cadencias">Sistema de Cadencias</a></li>
+                <li><a href="#progresiones">Progresiones Armonicas</a></li>
+                <li><a href="#metrica">Metrica y Ritmo</a></li>
+                <li><a href="#variaciones">Variaciones Motivicas</a></li>
+                <li><a href="#modos">Modos y Escalas</a></li>
+            </ul>
+        </nav>
+    </div>
+
+    <div class="docs-content">
+        <header class="docs-header">
+            <h1>Bases Teoricas del Generador de Melodias</h1>
+            <p class="docs-subtitle">Fundamentos de teoria musical clasica implementados en CompositorIA</p>
+        </header>
+
+        <!-- Jerarquia Estructural -->
+        <section id="jerarquia" class="docs-section">
+            <h2>1. Jerarquia Estructural</h2>
+            <p>La melodia clasica se construye mediante una jerarquia de unidades formales, de menor a mayor.</p>
+
+            <h3>1.1 El Motivo</h3>
+            <p>Es la unidad minima con sentido musical:</p>
+            <ul>
+                <li><strong>Longitud:</strong> 2-5 notas tipicamente</li>
+                <li><strong>Componentes:</strong> Perfil ritmico + intervalo caracteristico</li>
+                <li><strong>Funcion:</strong> Actua como "semilla" generadora de toda la pieza</li>
+            </ul>
+
+            <h3>1.2 La Frase</h3>
+            <p>Agrupacion de motivos que forma una idea musical completa pero que necesita respuesta.</p>
+            <ul>
+                <li><strong>Longitud tipica:</strong> 4 compases</li>
+                <li><strong>Estructura:</strong> Motivo + desarrollo/respuesta del motivo</li>
+            </ul>
+
+            <h3>1.3 El Periodo</h3>
+            <p>Unidad completa formada por dos frases en relacion pregunta-respuesta:</p>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Componente</th>
+                            <th>Nombre</th>
+                            <th>Cadencia</th>
+                            <th>Funcion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Primera frase</td>
+                            <td><strong>Antecedente</strong></td>
+                            <td>Semicadencia (V)</td>
+                            <td>Pregunta, tension</td>
+                        </tr>
+                        <tr>
+                            <td>Segunda frase</td>
+                            <td><strong>Consecuente</strong></td>
+                            <td>Cadencia autentica (V-I)</td>
+                            <td>Respuesta, resolucion</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sistema de Grados -->
+        <section id="grados" class="docs-section">
+            <h2>2. Sistema de Grados de la Escala</h2>
+            <p>No todos los grados de la escala tienen el mismo peso funcional.</p>
+
+            <h3>2.1 Grados de Estabilidad (Triada Tonica)</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Grado</th>
+                            <th>Nombre</th>
+                            <th>Funcion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>I</strong></td><td>Tonica</td><td>Maxima estabilidad, reposo absoluto</td></tr>
+                        <tr><td><strong>III</strong></td><td>Mediante</td><td>Estabilidad, define modo (mayor/menor)</td></tr>
+                        <tr><td><strong>V</strong></td><td>Dominante</td><td>Estabilidad relativa, soporte armonico</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>2.2 Grados de Tension (Notas de Tendencia)</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Grado</th>
+                            <th>Nombre</th>
+                            <th>Tendencia</th>
+                            <th>Resolucion</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>VII</strong></td><td>Sensible</td><td>Atraccion hacia I</td><td>Asciende a I</td></tr>
+                        <tr><td><strong>IV</strong></td><td>Subdominante</td><td>Tension hacia III</td><td>Desciende a III</td></tr>
+                        <tr><td><strong>II</strong></td><td>Supertonica</td><td>Tension hacia I o III</td><td>Por grado conjunto</td></tr>
+                        <tr><td><strong>VI</strong></td><td>Superdominante</td><td>Tension leve</td><td>Resuelve a V o I</td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="docs-note">
+                <strong>Regla critica:</strong> La sensible (VII) DEBE resolver a la tonica (I) por semitono ascendente.
+            </div>
+
+            <h3>2.3 Funciones Armonicas</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Funcion</th><th>Grados</th><th>Caracter</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Tonica</strong></td><td>I, III, VI</td><td>Estabilidad, reposo</td></tr>
+                        <tr><td><strong>Subdominante</strong></td><td>II, IV</td><td>Preparacion, movimiento</td></tr>
+                        <tr><td><strong>Dominante</strong></td><td>V, VII</td><td>Tension, necesidad de resolucion</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Notas Estructurales vs Ornamentales -->
+        <section id="notas" class="docs-section">
+            <h2>3. Notas Estructurales vs Ornamentales</h2>
+
+            <h3>3.1 Notas del Acorde (Chord Tones)</h3>
+            <ul>
+                <li>Ocupan <strong>tiempos fuertes</strong></li>
+                <li>Son destino de <strong>saltos melodicos</strong></li>
+                <li>Definen la <strong>armonia implicita</strong></li>
+            </ul>
+            <div class="docs-note">
+                <strong>Regla de oro:</strong> Si la melodia salta (intervalo > 3a), ambas notas deben ser notas del acorde.
+            </div>
+
+            <h3>3.2 Notas de Paso</h3>
+            <p>Conectan dos notas del acorde por grado conjunto. Movimiento por 2as, en tiempos debiles.</p>
+
+            <h3>3.3 Bordaduras</h3>
+            <p>Adornan una nota del acorde y regresan a ella (superior o inferior).</p>
+
+            <h3>3.4 Apoyaturas</h3>
+            <p>Nota acentuada que no pertenece al acorde, aproximada por salto, resuelve por grado conjunto descendente.</p>
+
+            <h3>3.5 Suspensiones</h3>
+            <p>Tres fases: preparacion (tiempo debil) - suspension (tiempo fuerte) - resolucion (descenso).</p>
+        </section>
+
+        <!-- Intervalos Melodicos -->
+        <section id="intervalos" class="docs-section">
+            <h2>4. Intervalos Melodicos</h2>
+
+            <h3>4.1 Clasificacion por Consonancia</h3>
+            <div class="docs-columns">
+                <div class="docs-column">
+                    <h4>Consonancias Perfectas</h4>
+                    <ul>
+                        <li>Unisono (1:1)</li>
+                        <li>Octava (2:1)</li>
+                        <li>Quinta justa (3:2)</li>
+                        <li>Cuarta justa (4:3)</li>
+                    </ul>
+                </div>
+                <div class="docs-column">
+                    <h4>Consonancias Imperfectas</h4>
+                    <ul>
+                        <li>Tercera mayor/menor</li>
+                        <li>Sexta mayor/menor</li>
+                    </ul>
+                </div>
+                <div class="docs-column">
+                    <h4>Disonancias</h4>
+                    <ul>
+                        <li>Segunda mayor/menor</li>
+                        <li>Septima mayor/menor</li>
+                        <li>Tritono</li>
+                    </ul>
+                </div>
+            </div>
+
+            <h3>4.2 Reglas de Saltos</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Regla</th><th>Descripcion</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Limite de salto</td><td>Maximo sexta en contexto normal</td></tr>
+                        <tr><td>Octava</td><td>Solo en climax o momentos especiales</td></tr>
+                        <tr><td>Recuperacion</td><td>Salto > 3a debe compensarse con movimiento contrario</td></tr>
+                        <tr><td>Tritono</td><td>Evitar como intervalo melodico directo</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Conduccion de Voces -->
+        <section id="conduccion" class="docs-section">
+            <h2>5. Conduccion de Voces</h2>
+
+            <h3>5.1 Principios Fundamentales</h3>
+            <ul>
+                <li><strong>Movimiento minimo:</strong> Cada voz se mueve la menor distancia posible</li>
+                <li><strong>Notas comunes:</strong> Mantener notas compartidas entre acordes</li>
+                <li><strong>Independencia:</strong> Cada voz debe tener interes melodico propio</li>
+            </ul>
+
+            <h3>5.2 Movimientos Prohibidos</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Prohibicion</th><th>Descripcion</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Quintas paralelas</td><td>Dos voces moviendose en 5as justas consecutivas</td></tr>
+                        <tr><td>Octavas paralelas</td><td>Dos voces moviendose en 8as consecutivas</td></tr>
+                        <tr><td>Quintas/octavas directas</td><td>Llegar a 5a/8a por movimiento directo</td></tr>
+                        <tr><td>Cruce de voces</td><td>Una voz cruzando el registro de otra</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Sistema de Cadencias -->
+        <section id="cadencias" class="docs-section">
+            <h2>6. Sistema de Cadencias</h2>
+            <p>Las cadencias son puntuaciones musicales que articulan la forma.</p>
+
+            <div class="docs-cards">
+                <div class="docs-card">
+                    <h4>Cadencia Autentica (V - I)</h4>
+                    <p>La mas conclusiva. Perfecta: bajo 5-1, soprano en grado 1, acordes fundamentales.</p>
+                </div>
+                <div class="docs-card">
+                    <h4>Semicadencia</h4>
+                    <p>Termina en dominante (V). Sensacion de pregunta o pausa.</p>
+                </div>
+                <div class="docs-card">
+                    <h4>Cadencia Plagal (IV - I)</h4>
+                    <p>Subdominante a tonica. Caracter himnico ("Amen").</p>
+                </div>
+                <div class="docs-card">
+                    <h4>Cadencia Rota (V - vi)</h4>
+                    <p>Dominante resuelve a submediante. Efecto de sorpresa.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Progresiones Armonicas -->
+        <section id="progresiones" class="docs-section">
+            <h2>7. Progresiones Armonicas</h2>
+
+            <h3>7.1 Circulo de Quintas Funcional</h3>
+            <div class="docs-code">I - IV - vii - iii - vi - ii - V - I</div>
+
+            <h3>7.2 Progresiones Comunes</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Contexto</th><th>Progresion</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Basica</td><td>I - IV - V - I</td></tr>
+                        <tr><td>Extendida</td><td>I - vi - IV - V - I</td></tr>
+                        <tr><td>Con ii</td><td>I - ii - V - I</td></tr>
+                        <tr><td>Periodo 8 compases</td><td>I - I - IV - V - I - I - IV - I</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>7.3 Reglas de Movimiento</h3>
+            <ul>
+                <li><strong>V resuelve a I</strong> (movimiento mas fuerte)</li>
+                <li><strong>IV puede ir a V o I</strong></li>
+                <li><strong>ii prepara V</strong> (pre-dominante)</li>
+                <li><strong>vi puede sustituir I</strong> (tonica debil)</li>
+                <li><strong>Evitar V a IV</strong> (retroceso funcional)</li>
+            </ul>
+        </section>
+
+        <!-- Metrica y Ritmo -->
+        <section id="metrica" class="docs-section">
+            <h2>8. Metrica y Ritmo</h2>
+
+            <h3>8.1 Jerarquia Metrica</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Nivel</th><th>Descripcion</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td>Tiempo fuerte</td><td>Primer pulso del compas, maxima importancia</td></tr>
+                        <tr><td>Tiempo semi-fuerte</td><td>Pulso 3 en 4/4, importancia secundaria</td></tr>
+                        <tr><td>Tiempos debiles</td><td>Pulsos intermedios</td></tr>
+                        <tr><td>Subdivisiones</td><td>Partes del pulso, menor jerarquia</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>8.2 Tipos de Inicio</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Tipo</th><th>Descripcion</th><th>Caracter</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Tetico</strong></td><td>Comienza en tiempo fuerte</td><td>Estabilidad, afirmacion</td></tr>
+                        <tr><td><strong>Anacrusico</strong></td><td>Comienza antes del tiempo fuerte</td><td>Impulso, direccion</td></tr>
+                        <tr><td><strong>Acefalo</strong></td><td>Silencio en tiempo fuerte</td><td>Incertidumbre, sincopa</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Variaciones Motivicas -->
+        <section id="variaciones" class="docs-section">
+            <h2>9. Variaciones Motivicas</h2>
+            <p>Tecnicas clasicas para desarrollar un motivo manteniendo su identidad.</p>
+
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Variacion</th><th>Descripcion</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Repeticion</strong></td><td>Motivo identico</td></tr>
+                        <tr><td><strong>Transposicion</strong></td><td>Motivo en otro grado de la escala</td></tr>
+                        <tr><td><strong>Inversion</strong></td><td>Intervalos invertidos (sube-baja, baja-sube)</td></tr>
+                        <tr><td><strong>Retrogradacion</strong></td><td>Motivo al reves (ultima nota primero)</td></tr>
+                        <tr><td><strong>Aumentacion</strong></td><td>Duraciones duplicadas</td></tr>
+                        <tr><td><strong>Disminucion</strong></td><td>Duraciones reducidas a mitad</td></tr>
+                        <tr><td><strong>Secuencia</strong></td><td>Repeticion a diferentes alturas</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="docs-note">
+                <strong>Principio de economia:</strong> Evitar introducir material completamente nuevo. Desarrollar lo existente.
+            </div>
+        </section>
+
+        <!-- Modos y Escalas -->
+        <section id="modos" class="docs-section">
+            <h2>10. Modos y Escalas</h2>
+
+            <h3>10.1 Concepto Fundamental: Diatonismo Modal</h3>
+            <p>Cada modo tiene su propia escala diatonica. Lo que parece "cromatico" en un modo puede ser completamente diatonico en otro.</p>
+            <p>Por ejemplo, <strong>C Lidio</strong> usa las notas: C D E <strong>F#</strong> G A B. El F# NO es una alteracion cromatica - es el 4to grado natural del modo Lidio.</p>
+
+            <h3>10.2 Nota Caracteristica (Color Note)</h3>
+            <p>Cada modo tiene una nota distintiva que lo define y debe enfatizarse:</p>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Modo</th><th>Nota</th><th>Caracter</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Lidio</strong></td><td>#4</td><td>Etereo, sonador, flotante</td></tr>
+                        <tr><td><strong>Jonico</strong></td><td>(ninguna)</td><td>Brillante, estable</td></tr>
+                        <tr><td><strong>Mixolidio</strong></td><td>b7</td><td>Blues, rock, folk</td></tr>
+                        <tr><td><strong>Dorico</strong></td><td>nat6</td><td>"Menor brillante", jazz</td></tr>
+                        <tr><td><strong>Eolico</strong></td><td>(ninguna)</td><td>Melancolico, natural</td></tr>
+                        <tr><td><strong>Frigio</strong></td><td>b2</td><td>Espanol, flamenco</td></tr>
+                        <tr><td><strong>Locrio</strong></td><td>b5</td><td>Inestable, tenso</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>10.3 Espectro de Brillantez Modal</h3>
+            <div class="docs-spectrum">
+                <div class="spectrum-section spectrum-bright">
+                    <h4>Modos Brillantes (3a Mayor)</h4>
+                    <div class="spectrum-items">
+                        <span class="spectrum-item">Lidio (#4)</span>
+                        <span class="spectrum-arrow">-</span>
+                        <span class="spectrum-item">Jonico</span>
+                        <span class="spectrum-arrow">-</span>
+                        <span class="spectrum-item">Mixolidio (b7)</span>
+                    </div>
+                </div>
+                <div class="spectrum-section spectrum-dark">
+                    <h4>Modos Oscuros (3a menor)</h4>
+                    <div class="spectrum-items">
+                        <span class="spectrum-item">Dorico (nat6)</span>
+                        <span class="spectrum-arrow">-</span>
+                        <span class="spectrum-item">Eolico</span>
+                        <span class="spectrum-arrow">-</span>
+                        <span class="spectrum-item">Frigio (b2)</span>
+                        <span class="spectrum-arrow">-</span>
+                        <span class="spectrum-item">Locrio (b5)</span>
+                    </div>
+                </div>
+            </div>
+
+            <h3>10.4 Escalas Menores</h3>
+            <div class="docs-table">
+                <table>
+                    <thead>
+                        <tr><th>Escala</th><th>Caracteristica</th><th>Uso tipico</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr><td><strong>Menor natural</strong></td><td>= Eolico</td><td>Melodia descendente</td></tr>
+                        <tr><td><strong>Menor armonica</strong></td><td>7mo grado elevado</td><td>Cadencias, armonia</td></tr>
+                        <tr><td><strong>Menor melodica</strong></td><td>6to y 7mo elevados</td><td>Melodia ascendente</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <h3>10.5 Modos Exoticos</h3>
+            <p>CompositorIA soporta 21 modos, incluyendo derivados de menor armonica y melodica:</p>
+            <div class="docs-columns">
+                <div class="docs-column">
+                    <h4>De Menor Armonica</h4>
+                    <ul>
+                        <li>Frigio Dominante (flamenco)</li>
+                        <li>Locrio nat6</li>
+                        <li>Dorico #4 (Ucraniano)</li>
+                        <li>Lidio #2</li>
+                    </ul>
+                </div>
+                <div class="docs-column">
+                    <h4>De Menor Melodica</h4>
+                    <ul>
+                        <li>Lidio Dominante</li>
+                        <li>Lidio Aumentado</li>
+                        <li>Alterado (Superlocrio)</li>
+                        <li>Mixolidio b6</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="docs-footer">
+            <p>Documentacion basada en el protocolo "Symmetry & Logic" de CompositorIA</p>
+            <a href="/" class="btn-back">Volver al Generador</a>
+        </footer>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Smooth scroll for anchor links
+    document.querySelectorAll('.docs-nav a').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+            e.preventDefault();
+            const target = document.querySelector(this.getAttribute('href'));
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    });
+
+    // Highlight current section in nav
+    const sections = document.querySelectorAll('.docs-section');
+    const navLinks = document.querySelectorAll('.docs-nav a');
+
+    window.addEventListener('scroll', () => {
+        let current = '';
+        sections.forEach(section => {
+            const sectionTop = section.offsetTop;
+            if (scrollY >= sectionTop - 100) {
+                current = section.getAttribute('id');
+            }
+        });
+
+        navLinks.forEach(link => {
+            link.classList.remove('active');
+            if (link.getAttribute('href') === '#' + current) {
+                link.classList.add('active');
+            }
+        });
+    });
+</script>
+{% endblock %}

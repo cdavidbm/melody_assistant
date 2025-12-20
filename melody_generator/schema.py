@@ -164,12 +164,21 @@ def form_to_generation_input(form_data: Dict[str, Any]) -> GenerationInput:
     """
     Convert Flask form data to GenerationInput.
 
-    This is the main entry point for Case 1 (form completion).
+    This is the main entry point for form completion.
+    If user_motif is provided, input_type becomes "musical_idea" (Case 2).
+    Otherwise, input_type is "form" (Case 1 - generate from scratch).
     """
     # Map mode number to name if needed
     mode = form_data.get("mode", "1")
     if mode in MODE_NUM_TO_NAME:
         mode = MODE_NUM_TO_NAME[mode]
+
+    # Check if user provided a motif (optional field)
+    user_motif_raw = form_data.get("user_motif", "")
+    user_motif = user_motif_raw.strip() if user_motif_raw else None
+
+    # Determine input type based on whether motif was provided
+    input_type = "musical_idea" if user_motif else "form"
 
     return GenerationInput(
         # Tonal
@@ -219,8 +228,11 @@ def form_to_generation_input(form_data: Dict[str, Any]) -> GenerationInput:
         title=form_data.get("title", "Melodia Generada"),
         composer=form_data.get("score_composer", "CompositorIA"),
 
-        # Input type
-        input_type="form",
+        # User's musical idea (optional)
+        user_motif=user_motif,
+
+        # Input type: "musical_idea" if motif provided, "form" otherwise
+        input_type=input_type,
     )
 
 

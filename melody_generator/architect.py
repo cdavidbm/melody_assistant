@@ -1118,8 +1118,11 @@ class MelodicArchitect:
         """
         Parsea una cadena de notación LilyPond a una lista de notas.
 
+        Handles the extended format:
+        { \\time 4/4 \\key c \\minor \\clef "treble" g'4 c''4 ees''4 d''4 | c''2 b'4 c''4 }
+
         Args:
-            lilypond_str: Notación como "c'4 d' e'8 f'"
+            lilypond_str: Notación como "c'4 d' e'8 f'" o formato extendido con comandos
 
         Returns:
             Lista de dicts con pitch y duration
@@ -1128,13 +1131,40 @@ class MelodicArchitect:
 
         # Clean input
         lilypond_str = lilypond_str.strip()
-        lilypond_str = re.sub(r'\|', ' ', lilypond_str)  # Remove bar lines
-        lilypond_str = re.sub(r'\s+', ' ', lilypond_str)  # Normalize spaces
+
+        # Remove braces
+        lilypond_str = re.sub(r'[{}]', ' ', lilypond_str)
+
+        # Remove \key command with its arguments (e.g., \key c \minor, \key d \major)
+        # This must come before general command removal
+        lilypond_str = re.sub(r'\\key\s+[a-g](?:is|es)?\s*\\(?:major|minor|dorian|phrygian|lydian|mixolydian|locrian)', ' ', lilypond_str, flags=re.IGNORECASE)
+
+        # Remove \clef command with argument (e.g., \clef "treble", \clef bass)
+        lilypond_str = re.sub(r'\\clef\s+(?:"[^"]*"|[a-z]+)', ' ', lilypond_str, flags=re.IGNORECASE)
+
+        # Remove \time command with fraction (e.g., \time 4/4)
+        lilypond_str = re.sub(r'\\time\s+\d+/\d+', ' ', lilypond_str)
+
+        # Remove remaining LilyPond commands (anything starting with backslash)
+        lilypond_str = re.sub(r'\\[a-zA-Z]+', ' ', lilypond_str)
+
+        # Remove quoted strings (any remaining)
+        lilypond_str = re.sub(r'"[^"]*"', ' ', lilypond_str)
+
+        # Remove standalone fractions (like 4/4, 3/4 if any remain)
+        lilypond_str = re.sub(r'\b\d+/\d+\b', ' ', lilypond_str)
+
+        # Remove bar lines
+        lilypond_str = re.sub(r'\|', ' ', lilypond_str)
+
+        # Normalize spaces
+        lilypond_str = re.sub(r'\s+', ' ', lilypond_str)
 
         # Pattern for LilyPond notes:
         # pitch: a-g with optional is/es (sharps/flats) and octave marks (',,)
         # duration: optional number (1,2,4,8,16,32) with optional dots
-        note_pattern = r"([a-g](?:is|es|isis|eses)?[',]*)([\d]*\.?)"
+        # Added word boundary \b at start to avoid matching inside words
+        note_pattern = r"\b([a-g](?:is|es|isis|eses)?[',]*)([\d]*\.?)"
 
         notes = []
         last_duration = "4"  # Default quarter note
